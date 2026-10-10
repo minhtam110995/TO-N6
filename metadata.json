@@ -1,0 +1,6 @@
+{
+  "name": "Toán 6 - Kết nối tri thức",
+  "description": "Ứng dụng học tập, luyện thi và quản lý môn Toán Lớp 6 theo bộ sách Kết nối tri thức với cuộc sống. Dành cho giáo viên, học sinh và phụ huynh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
