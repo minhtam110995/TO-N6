@@ -8,8 +8,6 @@ interface TopRoleBarProps {
   onSelectUser: (user: User) => void;
   onOpenLogin: () => void;
   onOpenGuide: () => void;
-  isMobileFrame: boolean;
-  onToggleMobileFrame: () => void;
 }
 
 export const TopRoleBar: React.FC<TopRoleBarProps> = ({
@@ -17,8 +15,6 @@ export const TopRoleBar: React.FC<TopRoleBarProps> = ({
   onSelectUser,
   onOpenLogin,
   onOpenGuide,
-  isMobileFrame,
-  onToggleMobileFrame,
 }) => {
   const handleSelectRole = (role: Role) => {
     let targetUser: User;
@@ -52,7 +48,7 @@ export const TopRoleBar: React.FC<TopRoleBarProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-sm">school</span>
-            <span>1. Giáo viên (Cô Tâm - 6A4)</span>
+            <span className="role-label-full">1. Giáo viên (Cô Tâm - 6A4)</span><span className="role-label-short">Giáo viên</span>
             {currentUser.role === 'teacher' && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
             )}
@@ -68,7 +64,7 @@ export const TopRoleBar: React.FC<TopRoleBarProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-sm">backpack</span>
-            <span>2. Học sinh (Em Minh Khang)</span>
+            <span className="role-label-full">2. Học sinh (Em Minh Khang)</span><span className="role-label-short">Học sinh</span>
             {currentUser.role === 'student' && (
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-300"></span>
             )}
@@ -84,7 +80,7 @@ export const TopRoleBar: React.FC<TopRoleBarProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-sm">family_restroom</span>
-            <span>3. Phụ huynh (Bố Minh Khang)</span>
+            <span className="role-label-full">3. Phụ huynh (Bố Minh Khang)</span><span className="role-label-short">Phụ huynh</span>
             {currentUser.role === 'parent' && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>
             )}
@@ -93,30 +89,14 @@ export const TopRoleBar: React.FC<TopRoleBarProps> = ({
 
         {/* Right: Quick Tools (Mobile frame toggle, Login modal, Supabase Guide) */}
         <div className="flex items-center gap-2">
-          {currentUser.role !== 'teacher' && (
-            <button
-              onClick={onToggleMobileFrame}
-              className={`hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium text-xs transition border ${
-                isMobileFrame
-                  ? 'bg-blue-900/60 text-blue-300 border-blue-600'
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-              }`}
-              title="Chuyển chế độ xem khung điện thoại hoặc toàn màn hình"
-            >
-              <span className="material-symbols-outlined text-sm">
-                {isMobileFrame ? 'devices' : 'smartphone'}
-              </span>
-              <span>{isMobileFrame ? 'Khung điện thoại' : 'Toàn màn hình'}</span>
-            </button>
-          )}
 
           <button
             onClick={onOpenLogin}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition font-medium text-xs border border-slate-700"
-            title="Đăng nhập tài khoản học sinh / phụ huynh khác"
+            title="Đăng xuất và trở về màn hình đăng nhập"
           >
-            <span className="material-symbols-outlined text-sm">login</span>
-            <span className="hidden sm:inline">Đăng nhập</span>
+            <span className="material-symbols-outlined text-sm">logout</span>
+            <span className="hidden sm:inline">Đăng xuất</span>
           </button>
 
           <button

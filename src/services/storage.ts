@@ -1,8 +1,10 @@
 import { User, Exam, Submission, WrongQuestionItem, Question, CognitiveLevel, WeakTopic } from '../types';
-import { CURRENT_TEACHER, INITIAL_STUDENTS, INITIAL_PARENTS, INITIAL_EXAMS, INITIAL_SUBMISSIONS, INITIAL_WRONG_QUESTIONS, INITIAL_WEAK_TOPICS } from '../data/mockData';
+import { CURRENT_TEACHER } from '../data/mockData';
 import { SEED_QUESTIONS } from '../data/seedQuestions';
+import { ADDITIONAL_QUESTIONS } from '../data/additionalQuestions';
+import { matrixCounts } from './examMatrix';
 
-const DATA_VERSION = 'toan6_kntt_v2026_cotam_6a4';
+const DATA_VERSION = 'toan6_clean_class_v1';
 
 const STORAGE_KEYS = {
   VERSION: 'toan6_data_version',
@@ -21,15 +23,21 @@ const STORAGE_KEYS = {
 function checkVersionMigration() {
   const currentVer = localStorage.getItem(STORAGE_KEYS.VERSION);
   if (currentVer !== DATA_VERSION) {
-    localStorage.setItem(STORAGE_KEYS.VERSION, DATA_VERSION);
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(CURRENT_TEACHER));
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
-    localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(INITIAL_PARENTS));
-    localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(INITIAL_EXAMS));
-    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(INITIAL_SUBMISSIONS));
-    localStorage.setItem(STORAGE_KEYS.WRONG_QUESTIONS, JSON.stringify(INITIAL_WRONG_QUESTIONS));
-    localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify(SEED_QUESTIONS));
-    localStorage.setItem(STORAGE_KEYS.WEAK_TOPICS, JSON.stringify(INITIAL_WEAK_TOPICS));
+    [STORAGE_KEYS.STUDENTS, STORAGE_KEYS.PARENTS, STORAGE_KEYS.EXAMS, STORAGE_KEYS.SUBMISSIONS, STORAGE_KEYS.WRONG_QUESTIONS, STORAGE_KEYS.WEAK_TOPICS].forEach(key => localStorage.setItem(key, '[]'));
+    Object.keys(localStorage).filter(key => /^(draft_exam_|active_exam_|parent_contact_draft_|teacher_exam_draft)/.test(key)).forEach(key => localStorage.removeItem(key));
+    localStorage.removeItem('toan6_messages');
+    localStorage.removeItem('toan6_reminders');
+    localStorage.removeItem('toan6_credentials');
+    if (typeof sessionStorage !== 'undefined') { sessionStorage.removeItem('toan6_login_session'); sessionStorage.removeItem('toan6_session_user'); }
+    if (!localStorage.getItem(STORAGE_KEYS.QUESTIONS_BANK)) localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify(SEED_QUESTIONS));
+    localStorage.setItem(STORAGE_KEYS.VERSION, DATA_VERSION);
+  }
+  if (!localStorage.getItem('toan6_bank_expansion_v1')) {
+    const bank: Question[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.QUESTIONS_BANK) || '[]');
+    const ids = new Set(bank.map(q => q.id));
+    localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify([...bank, ...ADDITIONAL_QUESTIONS.filter(q => !ids.has(q.id))]));
+    localStorage.setItem('toan6_bank_expansion_v1', 'done');
   }
 }
 checkVersionMigration();
@@ -39,14 +47,18 @@ const listeners: Set<Listener> = new Set();
 
 export function subscribeToStore(listener: Listener): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  const onStorage = (event: StorageEvent) => { if (event.key?.startsWith('toan6_')) listener(); };
+  if (typeof window !== 'undefined') window.addEventListener('storage', onStorage);
+  return () => { listeners.delete(listener); if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage); };
 }
 
-function notifyListeners() {
+export function notifyListeners() {
   listeners.forEach(l => l());
 }
 
 export function getCurrentUser(): User {
+  const sessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('toan6_session_user') : null;
+  if (sessionId) return [CURRENT_TEACHER, ...getStudents(), ...getParents()].find(u => u.id === sessionId) || CURRENT_TEACHER;
   const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
   if (saved) {
     try {
@@ -59,6 +71,7 @@ export function getCurrentUser(): User {
 }
 
 export function setCurrentUser(user: User) {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('toan6_session_user', user.id);
   localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
   notifyListeners();
 }
@@ -72,16 +85,15 @@ export function getStudents(): User[] {
       // fallback
     }
   }
-  localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
-  return INITIAL_STUDENTS;
+  return [];
 }
 
 export function addStudent(studentData: Partial<User>, parentData?: Partial<User>): { student: User; parent?: User } {
   const students = getStudents();
   const parents = getParents();
 
-  const newStudentId = `hs-${Date.now()}`;
-  const newParentId = `ph-${Date.now()}`;
+  const newStudentId = `hs-${crypto.randomUUID()}`;
+  const newParentId = `ph-${crypto.randomUUID()}`;
 
   const cleanName = (studentData.fullName || 'Học sinh')
     .toLowerCase()
@@ -91,6 +103,10 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
     .replace(/\s+/g, '');
 
   const username = studentData.username || `hs6a4_${cleanName}`;
+  if ([CURRENT_TEACHER, ...students, ...parents].some(u => u.username === username)) throw new Error('Tên đăng nhập đã tồn tại.');
+  const parentUsername = parentData?.username || parentData?.phone || `ph_${username}`;
+  if (parentData && (parentUsername === username || [CURRENT_TEACHER, ...students, ...parents].some(u => u.username === parentUsername))) throw new Error('Tên đăng nhập phụ huynh đã tồn tại.');
+  if (parentData?.phone && parents.some(p => p.phone?.replace(/\D/g, '') === parentData.phone?.replace(/\D/g, ''))) throw new Error('Số điện thoại phụ huynh đã có tài khoản.');
 
   const newStudent: User = {
     id: newStudentId,
@@ -98,14 +114,14 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
     fullName: studentData.fullName || 'Học sinh mới',
     role: 'student',
     group: studentData.group || 'Tổ 1',
-    birthDate: studentData.birthDate || '2015-01-01',
-    className: 'Lớp 6A4',
+    birthDate: studentData.birthDate,
+    className: 'Lớp 6A',
     classId: 'class-6a4',
-    phone: studentData.phone || '0988.123.456',
+    phone: studentData.phone,
     status: 'active',
     lastActive: 'Vừa tạo',
-    parentId: newParentId,
-    parentName: parentData?.fullName || 'Phụ huynh',
+    parentId: parentData ? newParentId : undefined,
+    parentName: parentData?.fullName,
   };
 
   students.push(newStudent);
@@ -115,12 +131,14 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
   if (parentData) {
     newParent = {
       id: newParentId,
-      username: parentData.username || `ph_${username}`,
+      username: parentData.username || parentData.phone || `ph_${username}`,
       fullName: parentData.fullName || 'Phụ huynh',
       role: 'parent',
-      phone: parentData.phone || '0988.123.456',
+      phone: parentData.phone,
       studentId: newStudentId,
-      className: 'Lớp 6A4',
+      studentName: newStudent.fullName,
+      email: parentData.email,
+      className: 'Lớp 6A',
       classId: 'class-6a4',
       status: 'active',
       lastActive: 'Vừa tạo',
@@ -142,8 +160,7 @@ export function getParents(): User[] {
       // fallback
     }
   }
-  localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(INITIAL_PARENTS));
-  return INITIAL_PARENTS;
+  return [];
 }
 
 export function getExams(): Exam[] {
@@ -155,8 +172,7 @@ export function getExams(): Exam[] {
       // fallback
     }
   }
-  localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(INITIAL_EXAMS));
-  return INITIAL_EXAMS;
+  return [];
 }
 
 export function createExam(exam: Exam) {
@@ -175,8 +191,7 @@ export function getSubmissions(): Submission[] {
       // fallback
     }
   }
-  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(INITIAL_SUBMISSIONS));
-  return INITIAL_SUBMISSIONS;
+  return [];
 }
 
 export function saveSubmission(submission: Submission) {
@@ -186,8 +201,13 @@ export function saveSubmission(submission: Submission) {
 
   // If wrong answers, record into wrong questions book
   const wrongAnswers = submission.answers.filter(a => !a.isCorrect);
-  const allQuestions = getQuestionBank();
-  const wrongItems = getWrongQuestions(submission.studentId);
+  const allQuestions = [...getQuestionBank(), ...(getExams().find(e => e.id === submission.examId)?.questions || [])];
+  const wrongItems = getWrongQuestions();
+
+  submission.answers.filter(a => a.isCorrect).forEach(a => {
+    const item = wrongItems.find(w => w.studentId === submission.studentId && w.questionId === a.questionId);
+    if (item) item.isResolved = true;
+  });
 
   wrongAnswers.forEach(ans => {
     const q = allQuestions.find(item => item.id === ans.questionId);
@@ -196,17 +216,18 @@ export function saveSubmission(submission: Submission) {
       if (existing) {
         existing.wrongCount += 1;
         existing.isResolved = false;
-        existing.lastWrongAt = 'Hôm nay';
+        existing.lastWrongAt = submission.submittedAt;
+        existing.wrongAnswer = q.options?.find(o => o.id === ans.selectedAnswerText || o.label === ans.selectedAnswerText)?.text || ans.selectedAnswerText || 'Chưa trả lời';
       } else {
         wrongItems.unshift({
           id: `wq-${Date.now()}-${Math.random()}`,
           questionId: q.id,
           studentId: submission.studentId,
           question: q,
-          wrongAnswer: ans.selectedAnswerText || ans.selectedOptionId || 'Chưa trả lời',
+          wrongAnswer: q.options?.find(o => o.id === ans.selectedAnswerText || o.label === ans.selectedAnswerText)?.text || ans.selectedAnswerText || ans.selectedOptionId || 'Chưa trả lời',
           correctAnswer: q.correctAnswers ? q.correctAnswers[0] : (q.options?.find(o => o.isCorrect)?.label || ''),
           wrongCount: 1,
-          lastWrongAt: 'Hôm nay',
+          lastWrongAt: submission.submittedAt,
           isResolved: false,
           teacherNote: q.teacherAdvice || 'Cần chú ý lại các bước giải cơ bản.'
         });
@@ -231,8 +252,7 @@ export function getWrongQuestions(studentId?: string): WrongQuestionItem[] {
       // fallback
     }
   }
-  localStorage.setItem(STORAGE_KEYS.WRONG_QUESTIONS, JSON.stringify(INITIAL_WRONG_QUESTIONS));
-  return INITIAL_WRONG_QUESTIONS;
+  return [];
 }
 
 export function resolveWrongQuestion(wrongItemId: string) {
@@ -254,8 +274,7 @@ export function getWeakTopics(): WeakTopic[] {
       // fallback
     }
   }
-  localStorage.setItem(STORAGE_KEYS.WEAK_TOPICS, JSON.stringify(INITIAL_WEAK_TOPICS));
-  return INITIAL_WEAK_TOPICS;
+  return [];
 }
 
 export function getQuestionBank(): Question[] {
@@ -289,8 +308,21 @@ export function deleteQuestion(questionId: string) {
   notifyListeners();
 }
 
+export function importQuestions(questions: Question[]) {
+  const bank = getQuestionBank();
+  const fingerprints = new Set(bank.map(q => `${q.lessonId}|${q.content.trim()}|${q.mathFormula || ''}`));
+  let added = 0;
+  for (const q of questions) {
+    const fingerprint = `${q.lessonId}|${q.content.trim()}|${q.mathFormula || ''}`;
+    if (fingerprints.has(fingerprint)) continue;
+    fingerprints.add(fingerprint); bank.push({ ...q, id: `q-import-${crypto.randomUUID()}` }); added++;
+  }
+  localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify(bank)); notifyListeners();
+  return added;
+}
+
 export function resetAllDataToDefault() {
-  localStorage.clear();
+  Object.values(STORAGE_KEYS).filter(key => key !== STORAGE_KEYS.QUESTIONS_BANK).forEach(key => localStorage.removeItem(key));
   checkVersionMigration();
   notifyListeners();
 }
@@ -302,6 +334,7 @@ export function generateExamQuestions(
   totalCount: number,
   matrix: { nhanBietPercent: number; thongHieuPercent: number; vanDungPercent: number; vanDungCaoPercent: number }
 ): Question[] {
+  if (!Number.isInteger(totalCount) || totalCount < 1) throw new Error('Số câu phải là số nguyên dương.');
   const allQuestions = getQuestionBank();
   
   // Filter relevant questions
@@ -310,13 +343,7 @@ export function generateExamQuestions(
     pool = pool.filter(q => lessonIds.includes(q.lessonId));
   }
 
-  // If pool too small, expand to whole chapter or all
-  if (pool.length < totalCount) {
-    pool = allQuestions.filter(q => q.chapterId === chapterId);
-  }
-  if (pool.length === 0) {
-    pool = allQuestions;
-  }
+  if (pool.length < totalCount) throw new Error(`Chỉ có ${pool.length} câu trong phạm vi đã chọn. Hãy giảm số câu hoặc chọn thêm bài.`);
 
   const byLevel: Record<CognitiveLevel, Question[]> = {
     nhan_biet: pool.filter(q => q.level === 'nhan_biet'),
@@ -325,22 +352,17 @@ export function generateExamQuestions(
     van_dung_cao: pool.filter(q => q.level === 'van_dung_cao'),
   };
 
-  const countNB = Math.max(1, Math.round((matrix.nhanBietPercent / 100) * totalCount));
-  const countTH = Math.max(1, Math.round((matrix.thongHieuPercent / 100) * totalCount));
-  const countVD = Math.max(1, Math.round((matrix.vanDungPercent / 100) * totalCount));
-  const countVDC = Math.max(1, totalCount - countNB - countTH - countVD);
+  const counts = matrixCounts(matrix, totalCount);
+  const [countNB, countTH, countVD, countVDC] = counts;
 
   const pickRandom = (arr: Question[], n: number): Question[] => {
-    const shuffled = [...arr].sort(() => 0.5 - Math.random());
-    const res: Question[] = [];
-    for (let i = 0; i < n; i++) {
-      if (shuffled[i]) {
-        res.push(shuffled[i]);
-      } else if (pool.length > 0) {
-        res.push(pool[i % pool.length]);
-      }
+    if (arr.length < n) throw new Error('Ngân hàng chưa đủ câu theo ma trận đã chọn. Hãy điều chỉnh ma trận hoặc bổ sung câu hỏi.');
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    return res;
+    return shuffled.slice(0, n);
   };
 
   const selected = [

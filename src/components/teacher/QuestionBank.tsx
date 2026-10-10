@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getQuestionBank, saveQuestion, deleteQuestion } from '../../services/storage';
 import { CHAPTERS_DATA } from '../../data/seedQuestions';
 import { Question, CognitiveLevel, QuestionType } from '../../types';
 import { MathRenderer } from '../common/MathRenderer';
+import { QuestionImport } from './QuestionImport';
 
 export const QuestionBank: React.FC = () => {
   const [bank, setBank] = useState<Question[]>(getQuestionBank);
@@ -11,6 +12,8 @@ export const QuestionBank: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
 
   // Form states for adding/editing question
   const [formChapter, setFormChapter] = useState(6);
@@ -20,11 +23,15 @@ export const QuestionBank: React.FC = () => {
   const [formContent, setFormContent] = useState('');
   const [formFormula, setFormFormula] = useState('');
   const [formAnswer, setFormAnswer] = useState('');
+  const [formOptions, setFormOptions] = useState(['', '', '', '']);
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [selectedChapter, selectedLevel, searchTerm]);
   const [formSolution, setFormSolution] = useState('');
   const [formAdvice, setFormAdvice] = useState('');
 
   const refreshBank = () => {
     setBank(getQuestionBank());
+    setPage(1);
   };
 
   const filteredQuestions = bank.filter(q => {
@@ -50,7 +57,8 @@ export const QuestionBank: React.FC = () => {
     setFormType('multiple_choice');
     setFormContent('');
     setFormFormula('');
-    setFormAnswer('');
+    setFormAnswer('A');
+    setFormOptions(['', '', '', '']);
     setFormSolution('');
     setFormAdvice('');
     setIsModalOpen(true);
@@ -65,6 +73,9 @@ export const QuestionBank: React.FC = () => {
 
     const chap = CHAPTERS_DATA.find(c => c.id === formChapter);
     const les = chap?.lessons.find(l => l.id === formLesson);
+    if (!les) return alert('Chọn bài học thuộc chương đã chọn.');
+    if (formType === 'multiple_choice' && (formOptions.some(o => !o.trim()) || !['A', 'B', 'C', 'D'].includes(formAnswer))) return alert('Nhập đủ bốn lựa chọn và chọn đáp án đúng.');
+    if (formType === 'fill_in_the_blank' && !formAnswer.trim()) return alert('Nhập đáp án đúng.');
 
     const newQ: Question = {
       id: editingQuestion?.id || `q-custom-${Date.now()}`,
@@ -76,13 +87,8 @@ export const QuestionBank: React.FC = () => {
       type: formType,
       content: formContent,
       mathFormula: formFormula || undefined,
-      correctAnswers: formAnswer ? [formAnswer] : ['A'],
-      options: formType === 'multiple_choice' ? [
-        { id: 'opt-a', label: 'A', text: formAnswer || 'Đáp án A (Đúng)', isCorrect: true },
-        { id: 'opt-b', label: 'B', text: 'Đáp án B', isCorrect: false },
-        { id: 'opt-c', label: 'C', text: 'Đáp án C', isCorrect: false },
-        { id: 'opt-d', label: 'D', text: 'Đáp án D', isCorrect: false },
-      ] : undefined,
+      correctAnswers: formType === 'fill_in_the_blank' ? formAnswer.split('|').map(a => a.trim()).filter(Boolean) : undefined,
+      options: formType === 'multiple_choice' ? formOptions.map((text, i) => ({ id: `opt-${i}`, label: 'ABCD'[i], text: text.trim(), isCorrect: formAnswer === 'ABCD'[i] })) : undefined,
       solutionSteps: [
         { step: 1, title: 'Hướng dẫn giải', explanation: formSolution || 'Áp dụng định nghĩa và tính chất cơ bản SGK.' }
       ],
@@ -108,7 +114,7 @@ export const QuestionBank: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 question-bank">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-4">
         <div>
@@ -117,7 +123,8 @@ export const QuestionBank: React.FC = () => {
             Soạn sẵn theo 9 chương SGK Kết nối tri thức với cuộc sống • Đầy đủ 4 mức độ nhận thức
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="secondary-button" onClick={() => setImportOpen(true)}><span className="material-symbols-outlined">upload</span>Nạp câu hỏi từ file</button>
           <button
             onClick={handleExportJSON}
             className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs flex items-center gap-1.5"
@@ -136,8 +143,10 @@ export const QuestionBank: React.FC = () => {
       </div>
 
       {/* Filters Toolbar */}
+      {importMessage && <p role="status" className="correct">{importMessage}</p>}
+      {importOpen && <QuestionImport onClose={() => setImportOpen(false)} onDone={count => { refreshBank(); setImportOpen(false); setImportMessage(`Đã thêm ${count} câu, bỏ qua các câu trùng nội dung.`); }} />}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex-1 min-w-[260px] relative">
+        <div className="bank-search flex-1 relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
           <input
             type="text"
@@ -148,7 +157,7 @@ export const QuestionBank: React.FC = () => {
           />
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="bank-filter-selects flex items-center gap-2 flex-wrap">
           <select
             value={selectedChapter}
             onChange={e => setSelectedChapter(Number(e.target.value))}
@@ -176,10 +185,10 @@ export const QuestionBank: React.FC = () => {
 
       {/* Questions Stream */}
       <div className="space-y-4">
-        {filteredQuestions.map((q, idx) => (
+        {filteredQuestions.slice((Math.min(page, Math.max(1, Math.ceil(filteredQuestions.length / 20))) - 1) * 20, Math.min(page, Math.max(1, Math.ceil(filteredQuestions.length / 20))) * 20).map((q, idx) => (
           <div key={q.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
+            <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
+              <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
                 <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold text-xs">
                   #{idx + 1}
                 </span>
@@ -250,6 +259,7 @@ export const QuestionBank: React.FC = () => {
       </div>
 
       {/* Add / Edit Modal */}
+      <div className="pagination"><button className="secondary-button" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Trước</button><span>{filteredQuestions.length} câu · Trang {Math.min(page, Math.max(1, Math.ceil(filteredQuestions.length / 20)))}/{Math.max(1, Math.ceil(filteredQuestions.length / 20))}</span><button className="secondary-button" disabled={page >= Math.ceil(filteredQuestions.length / 20)} onClick={() => setPage(page + 1)}>Tiếp</button></div>
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -265,7 +275,7 @@ export const QuestionBank: React.FC = () => {
                 <label className="block font-bold text-slate-700 mb-1">Chương</label>
                 <select
                   value={formChapter}
-                  onChange={e => setFormChapter(Number(e.target.value))}
+                  onChange={e => { const id = Number(e.target.value); setFormChapter(id); setFormLesson(CHAPTERS_DATA.find(c => c.id === id)!.lessons[0].id); }}
                   className="w-full p-2 rounded-xl border border-slate-300"
                 >
                   {CHAPTERS_DATA.map(c => (
@@ -275,6 +285,7 @@ export const QuestionBank: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
+                <label className="col-span-2">Bài học<select className="w-full p-2 rounded-xl border border-slate-300" value={formLesson} onChange={e => setFormLesson(Number(e.target.value))}>{CHAPTERS_DATA.find(c => c.id === formChapter)?.lessons.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}</select></label>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Mức độ nhận thức</label>
                   <select
@@ -292,7 +303,7 @@ export const QuestionBank: React.FC = () => {
                   <label className="block font-bold text-slate-700 mb-1">Dạng câu hỏi</label>
                   <select
                     value={formType}
-                    onChange={e => setFormType(e.target.value as QuestionType)}
+                    onChange={e => { setFormType(e.target.value as QuestionType); setFormAnswer(e.target.value === 'multiple_choice' ? 'A' : ''); }}
                     className="w-full p-2 rounded-xl border border-slate-300"
                   >
                     <option value="multiple_choice">Trắc nghiệm 4 đáp án</option>
@@ -324,8 +335,10 @@ export const QuestionBank: React.FC = () => {
                 />
               </div>
 
+              {formType === 'multiple_choice' && <div className="space-y-2">{formOptions.map((text, i) => <label className="block" key={i}>Lựa chọn {'ABCD'[i]}<input className="w-full p-2 rounded-xl border border-slate-300" required value={text} onChange={e => setFormOptions(prev => prev.map((v, j) => i === j ? e.target.value : v))} /></label>)}</div>}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Đáp án đúng</label>
+                {formType === 'multiple_choice' ? <select className="w-full p-2 rounded-xl border border-slate-300" value={formAnswer} onChange={e => setFormAnswer(e.target.value)}>{['A', 'B', 'C', 'D'].map(label => <option key={label}>{label}</option>)}</select> :
                 <input
                   type="text"
                   value={formAnswer}
@@ -333,7 +346,7 @@ export const QuestionBank: React.FC = () => {
                   className="w-full p-2 rounded-xl border border-slate-300 text-xs"
                   placeholder="Nhập đáp án đúng (hoặc giá trị số)"
                   required
-                />
+                />}
               </div>
 
               <div>

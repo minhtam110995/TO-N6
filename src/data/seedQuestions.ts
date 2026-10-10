@@ -803,7 +803,7 @@ export function isEquivalentAnswer(userAnswer: string, correctList: string[]): b
     const numCorrect = parseFractionOrDecimal(correctNormalized);
 
     if (numUser !== null && numCorrect !== null) {
-      if (Math.abs(numUser - numCorrect) < 0.001) {
+      if (Math.abs(numUser - numCorrect) < 1e-9) {
         return true;
       }
     }
@@ -813,20 +813,15 @@ export function isEquivalentAnswer(userAnswer: string, correctList: string[]): b
 }
 
 function parseFractionOrDecimal(val: string): number | null {
-  if (val.includes('%')) {
-    const raw = parseFloat(val.replace('%', ''));
-    if (!isNaN(raw)) return raw / 100;
+  const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+  if (val.endsWith('%')) {
+    const raw = val.slice(0, -1);
+    return numeric.test(raw) && Number.isFinite(Number(raw)) ? Number(raw) / 100 : null;
   }
-  if (val.includes('/')) {
-    const parts = val.split('/');
-    if (parts.length === 2) {
-      const top = parseFloat(parts[0]);
-      const bottom = parseFloat(parts[1]);
-      if (!isNaN(top) && !isNaN(bottom) && bottom !== 0) {
-        return top / bottom;
-      }
-    }
+  const parts = val.split('/');
+  if (parts.length === 2 && parts.every(part => numeric.test(part))) {
+    const top = Number(parts[0]), bottom = Number(parts[1]);
+    return Number.isFinite(top) && Number.isFinite(bottom) && bottom !== 0 ? top / bottom : null;
   }
-  const parsed = parseFloat(val);
-  return isNaN(parsed) ? null : parsed;
+  return numeric.test(val) && Number.isFinite(Number(val)) ? Number(val) : null;
 }

@@ -1,0 +1,13 @@
+import React, { useEffect, useState } from 'react';
+import { Send } from 'lucide-react';
+import { getCurrentUser, getParents } from '../../services/storage';
+import { getMessages, markMessagesRead, sendMessage } from '../../services/messages';
+export function MessageCenter() {
+  const user = getCurrentUser(); const parents = getParents();
+  const [selected, setSelected] = useState(user.role === 'parent' ? user.id : parents[0]?.id || '');
+  const [body, setBody] = useState(''); const [error, setError] = useState('');
+  const messages = getMessages(selected);
+  const unread = messages.filter(m => !m.readAt && m.senderId !== user.id).length;
+  useEffect(() => { if (selected) markMessagesRead(selected); }, [selected, unread]);
+  return <section><div className="page-heading"><h1>{user.role === 'teacher' ? 'Hộp thư phụ huynh' : 'Liên hệ Cô Tâm'}</h1><p>Trao đổi cục bộ trên trình duyệt này. Chưa đồng bộ qua Supabase.</p></div><div className="message-layout">{user.role === 'teacher' && <nav className="message-conversations" aria-label="Cuộc trao đổi">{parents.map(parent => { const count = getMessages(parent.id).filter(m => !m.readAt && m.senderId !== user.id).length; return <button key={parent.id} aria-pressed={selected === parent.id} onClick={() => { setSelected(parent.id); setBody(''); }}><strong>{parent.fullName}{count > 0 && <span className="count-pill">{count}</span>}</strong><small>Phụ huynh của {parent.studentName}</small></button>; })}{!parents.length && <p className="empty-state">Chưa có tài khoản phụ huynh được liên kết.</p>}</nav>}<div className="message-thread">{selected ? <><h2>{user.role === 'teacher' ? parents.find(p => p.id === selected)?.fullName : 'Cô Tâm'}</h2><div className="message-list" aria-label="Tin nhắn">{messages.map(message => <article key={message.id} className={`message-bubble ${message.senderId === user.id ? 'sent' : ''}`}><p>{message.body}</p><small>{new Date(message.createdAt).toLocaleString('vi-VN')} · {message.readAt ? 'Đã đọc' : 'Đã lưu cục bộ'}</small></article>)}{!messages.length && <p className="empty-state">Chưa có tin nhắn.</p>}</div><form onSubmit={e => { e.preventDefault(); setError(''); try { sendMessage(selected, body); setBody(''); } catch (e) { setError(e instanceof Error ? e.message : 'Chưa gửi được tin.'); } }}><label>Nội dung trao đổi<textarea required maxLength={3000} rows={3} value={body} onChange={e => setBody(e.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<button className="primary-button" disabled={!body.trim()}><Send size={16} />Gửi tin nhắn</button></form></> : <p className="empty-state">Chọn phụ huynh để trao đổi.</p>}</div></div></section>;
+}

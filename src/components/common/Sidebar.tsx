@@ -8,6 +8,9 @@ interface SidebarProps {
   currentUser: User;
   onSwitchToStudent?: () => void;
   onSwitchToParent?: () => void;
+  onLogout?: () => void;
+  onChangePassword?: () => void;
+  unreadCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -17,13 +20,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onSwitchToStudent,
   onSwitchToParent,
+  onLogout,
+  onChangePassword,
+  unreadCount = 0,
 }) => {
   const navItems = [
     { id: 'overview', label: 'Tổng quan lớp', icon: 'dashboard' },
     { id: 'students', label: 'Quản lý học sinh', icon: 'groups' },
     { id: 'questions', label: 'Ngân hàng câu hỏi', icon: 'quiz' },
     { id: 'create_exam', label: 'Tạo đề & Giao bài', icon: 'assignment_add' },
+    { id: 'assigned', label: 'Bài đã giao', icon: 'assignment_turned_in' },
     { id: 'analytics', label: 'Thống kê kết quả', icon: 'analytics' },
+    { id: 'contact', label: `Hộp thư phụ huynh${unreadCount ? ` (${unreadCount})` : ''}`, icon: 'forum' },
     { id: 'settings', label: 'Cài đặt lớp học', icon: 'settings' },
   ];
 
@@ -52,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-bold text-xs text-slate-900 truncate">Cô Tâm</span>
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" title="Trực tuyến"></span>
               </div>
-              <p className="text-[11px] text-slate-500 truncate">GV Toán 6A4</p>
+              <p className="text-[11px] text-slate-500 truncate">GV Toán 6A</p>
             </div>
           </div>
 
@@ -82,6 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Bottom CTA & Role switchers */}
         <div className="pt-3 border-t border-slate-100 space-y-2.5">
+          <div className="sidebar-account-actions"><button className="secondary-button" onClick={onChangePassword}><span className="material-symbols-outlined">key</span>Đổi mật khẩu</button><button className="secondary-button" onClick={onLogout}><span className="material-symbols-outlined">logout</span>Đăng xuất</button></div>
           <button
             onClick={onOpenCreateExam}
             className="tactile-btn-orange w-full bg-orange-600 hover:bg-orange-700 text-white py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
@@ -91,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
 
           {/* Quick role previews */}
-          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 text-xs">
+          {(onSwitchToStudent || onSwitchToParent) && <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 text-xs">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
               Xem trước màn hình Mobile:
             </span>
@@ -119,10 +128,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-[10px] bg-orange-200 px-1 rounded text-orange-900 font-bold">Mở</span>
               </button>
             )}
-          </div>
+          </div>}
 
           <div className="text-center">
-            <span className="text-[10px] text-slate-400">Năm học 2026-2027 • Lớp 6A4</span>
+            <span className="text-[10px] text-slate-400">Năm học 2026-2027 • Lớp 6A</span>
           </div>
         </div>
       </div>

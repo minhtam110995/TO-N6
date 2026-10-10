@@ -1,557 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { User, Role } from './types';
-import { getCurrentUser, subscribeToStore, setCurrentUser, getWrongQuestions } from './services/storage';
-import { INITIAL_STUDENTS, INITIAL_PARENTS, CURRENT_TEACHER } from './data/mockData';
-import { Header } from './components/common/Header';
-import { Sidebar } from './components/common/Sidebar';
-import { BottomNav } from './components/common/BottomNav';
-import { RoleSwitcher } from './components/common/RoleSwitcher';
-import { TopRoleBar } from './components/common/TopRoleBar';
+import React, { useEffect, useState } from 'react';
+import { X, BookOpen, Users, LayoutDashboard, ClipboardList, BarChart3, Settings, LogOut, KeyRound } from 'lucide-react';
+import { getCurrentUser, subscribeToStore, getExams, getSubmissions, getWrongQuestions, getQuestionBank, createExam } from './services/storage';
+import { getSessionUser } from './services/localAuth';
+import { unreadMessageCount } from './services/messages';
+import { getReminders, readReminders, remindChild } from './services/reminders';
+import { Exam, Question } from './types';
+const ClassOverview = React.lazy(() => import('./components/teacher/ClassOverview').then(m => ({ default: m.ClassOverview })));
+const StudentManagement = React.lazy(() => import('./components/teacher/StudentManagement').then(m => ({ default: m.StudentManagement })));
+const QuestionBank = React.lazy(() => import('./components/teacher/QuestionBank').then(m => ({ default: m.QuestionBank })));
+const CreateExam = React.lazy(() => import('./components/teacher/CreateExam').then(m => ({ default: m.CreateExam })));
+const AssignedExams = React.lazy(() => import('./components/teacher/AssignedExams').then(m => ({ default: m.AssignedExams })));
+const ClassAnalytics = React.lazy(() => import('./components/teacher/ClassAnalytics').then(m => ({ default: m.ClassAnalytics })));
+import { CreateAccountModal } from './components/teacher/CreateAccountModal';
+import { SelfPractice } from './components/student/SelfPractice';
+const WrongQuestionBook = React.lazy(() => import('./components/student/WrongQuestionBook').then(m => ({ default: m.WrongQuestionBook })));
+const ExamTaking = React.lazy(() => import('./components/student/ExamTaking').then(m => ({ default: m.ExamTaking })));
+const ExamResult = React.lazy(() => import('./components/student/ExamResult').then(m => ({ default: m.ExamResult })));
+import { MessageCenter } from './components/common/MessageCenter';
+import { ChangePassword } from './components/auth/ChangePassword';
 import { LoginView } from './components/auth/LoginView';
 import { SetupGuideModal } from './components/guide/SetupGuideModal';
-
-// Teacher components
-import { ClassOverview } from './components/teacher/ClassOverview';
-import { StudentManagement } from './components/teacher/StudentManagement';
-import { CreateExam } from './components/teacher/CreateExam';
-import { QuestionBank } from './components/teacher/QuestionBank';
-import { ClassAnalytics } from './components/teacher/ClassAnalytics';
-import { CreateAccountModal } from './components/teacher/CreateAccountModal';
-
-// Student components
+import { Sidebar } from './components/common/Sidebar';
+import { Header } from './components/common/Header';
+import { BottomNav } from './components/common/BottomNav';
 import { StudentHome } from './components/student/StudentHome';
-import { ExamTaking } from './components/student/ExamTaking';
-import { ExamResult } from './components/student/ExamResult';
-import { WrongQuestionBook } from './components/student/WrongQuestionBook';
-import { SelfPractice } from './components/student/SelfPractice';
-import { StudentProgress } from './components/student/StudentProgress';
-
-// Parent components
 import { ParentDashboard } from './components/parent/ParentDashboard';
-import { ParentHistory } from './components/parent/ParentHistory';
-import { ParentContact } from './components/parent/ParentContact';
 
 export default function App() {
-  const [currentUser, setUser] = useState<User>(() => getCurrentUser());
-  const [teacherTab, setTeacherTab] = useState<string>('overview');
-  const [studentTab, setStudentTab] = useState<string>('home');
-  const [parentTab, setParentTab] = useState<string>('parent_overview');
+  const [authenticated, setAuthenticated] = useState(() => !!getSessionUser());
+  const logout = () => { sessionStorage.removeItem('toan6_login_session'); sessionStorage.removeItem('toan6_session_user'); setAuthenticated(false); };
+  if (!authenticated) return <main className="login-page legacy-theme"><LoginView onLoginSuccess={() => { sessionStorage.setItem('toan6_login_session', 'active'); setAuthenticated(true); }} /></main>;
+  return <AuthenticatedApp onLogout={logout} />;
+}
 
-  // Phone frame mockup toggle for mobile roles on desktop
-  const [isMobileFrame, setIsMobileFrame] = useState<boolean>(true);
-
-  // Modals & Navigation states
-  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [showCreateAccountModal, setShowCreateAccountModal] = useState<boolean>(false);
-  const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
-  const [activeExamId, setActiveExamId] = useState<string | null>(null);
-  const [viewSubmissionId, setViewSubmissionId] = useState<string | null>(null);
-  const [isParentInChat, setIsParentInChat] = useState<boolean>(false);
-
-  // Subscribe to storage changes
+function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
+  const [user, setUser] = useState(getCurrentUser);
+  const [, setRevision] = useState(0);
+  const [tab, setTab] = useState('overview');
+  const [menu, setMenu] = useState(false);
+  const [guide, setGuide] = useState(false);
+  const [account, setAccount] = useState(false);
+  const [activeExam, setActiveExam] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
+  const [selectedExam, setSelectedExam] = useState<string | undefined>();
+  const [assignedId, setAssignedId] = useState<string>();
+  const [studentSearch, setStudentSearch] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState<string | undefined>();
+  useEffect(() => subscribeToStore(() => { setUser(getCurrentUser()); setRevision(r => r + 1); }), []);
   useEffect(() => {
-    const unsubscribe = subscribeToStore(() => {
-      setUser(getCurrentUser());
-    });
-    return unsubscribe;
-  }, []);
-
-  // Sync tab defaults on role change
-  useEffect(() => {
-    setActiveExamId(null);
-    setViewSubmissionId(null);
-    setIsParentInChat(false);
-
-    if (currentUser.role === 'teacher') {
-      setTeacherTab('overview');
-    } else if (currentUser.role === 'student') {
-      setStudentTab('home');
-    } else {
-      setParentTab('parent_overview');
-    }
-  }, [currentUser.role]);
-
-  // Handle start exam
-  const handleStartExam = (examId: string) => {
-    setActiveExamId(examId);
-    setViewSubmissionId(null);
+    setTab('overview'); setResult(null); setMenu(false);
+    const savedId = localStorage.getItem(`active_exam_${user.id}`);
+    setActiveExam(savedId && getExams().some(e => e.id === savedId) && localStorage.getItem(`draft_exam_${user.id}_${savedId}`) ? savedId : null);
+  }, [user.id]);
+  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(timer); }, [notice]);
+  const studentId = user.role === 'parent' ? user.studentId : user.id;
+  const submissions = getSubmissions().filter(s => s.studentId === studentId);
+  const exams = getExams().filter(e => e.type !== 'practice' && (e.assignedTo === 'all' || e.assignedTo.includes(studentId || '')));
+  const navigate = (next: string) => {
+    const aliases: Record<string, string> = { home: 'overview', self_practice: 'practice', wrong_book: 'wrong', progress: 'history', parent_overview: 'overview', parent_progress: 'progress', parent_history: 'history', parent_contact: 'contact' };
+    setTab(aliases[next] || next); setMenu(false); setResult(null); setSelectedStudent(undefined); setSelectedExam(undefined); window.scrollTo({ top: 0 });
   };
-
-  // Handle exam finished
-  const handleExamFinished = (submissionId: string) => {
-    setActiveExamId(null);
-    setViewSubmissionId(submissionId);
+  const startExam = (id: string) => {
+    const exam = getExams().find(e => e.id === id);
+    if (!exam?.questions.length) return setNotice('Đề bài chưa có câu hỏi.');
+    const draft = localStorage.getItem(`draft_exam_${user.id}_${id}`);
+    if (!draft && exam.type !== 'practice' && (exam.status !== 'active' || Date.now() > Date.parse(exam.deadline))) return setNotice('Bài tập đã hết hạn.');
+    if (!draft && submissions.filter(s => s.examId === id).length >= exam.maxRetries) return setNotice('Bạn đã dùng hết lượt làm bài.');
+    localStorage.setItem(`active_exam_${user.id}`, id);
+    setActiveExam(id); setResult(null);
   };
-
-  const handleStartCustomPractice = (_chapterId: number, _lessonId?: number) => {
-    setActiveExamId('exam-01');
+  const practice = (questions: Question[]) => {
+    if (!questions.length) return setNotice('Chưa có câu hỏi trong bài đã chọn.');
+    const exam: Exam = { id: `practice-${crypto.randomUUID()}`, title: `Ôn luyện: ${questions[0].lessonTitle}`, type: 'practice', chapterId: questions[0].chapterId, lessonIds: [...new Set(questions.map(q => q.lessonId))], matrix: { nhanBietPercent: 40, thongHieuPercent: 30, vanDungPercent: 20, vanDungCaoPercent: 10 }, timeLimitMinutes: Math.max(5, Math.ceil(questions.reduce((s, q) => s + q.estimatedSeconds, 0) / 60)), deadline: new Date(Date.now() + 86400000).toISOString(), maxRetries: 999, shuffleQuestions: true, shuffleOptions: true, showSolutionAfter: 'submit', assignedTo: [user.id], createdBy: user.id, createdAt: new Date().toISOString(), questions, status: 'active' };
+    createExam(exam); localStorage.setItem(`active_exam_${user.id}`, exam.id); setActiveExam(exam.id);
   };
-
-  const switchToStudent = () => {
-    setCurrentUser(INITIAL_STUDENTS[0]);
-    setUser(INITIAL_STUDENTS[0]);
-  };
-
-  const switchToParent = () => {
-    setCurrentUser(INITIAL_PARENTS[0]);
-    setUser(INITIAL_PARENTS[0]);
-  };
-
-  const switchToTeacher = () => {
-    setCurrentUser(CURRENT_TEACHER);
-    setUser(CURRENT_TEACHER);
-  };
-
-  const wrongQuestions = getWrongQuestions('hs-01');
-  const unresolvedWrongCount = wrongQuestions.filter(q => !q.isResolved).length;
-
-  return (
-    <div className="min-h-screen bg-[#f8f9ff] text-[#0b1c30] flex flex-col font-sans">
-      {/* 1. TOP ROLE BAR: Always visible at the very top for 1-click switching */}
-      <TopRoleBar
-        currentUser={currentUser}
-        onSelectUser={(u) => {
-          setUser(u);
-          setActiveExamId(null);
-          setViewSubmissionId(null);
-          setIsParentInChat(false);
-        }}
-        onOpenLogin={() => setShowLoginModal(true)}
-        onOpenGuide={() => setShowGuideModal(true)}
-        isMobileFrame={isMobileFrame}
-        onToggleMobileFrame={() => setIsMobileFrame(!isMobileFrame)}
-      />
-
-      {/* 2. If student is taking an exam, render full screen interactive exam interface */}
-      {currentUser.role === 'student' && activeExamId && (
-        <div className="flex-1 w-full max-w-2xl mx-auto px-4 py-4 sm:py-6">
-          <ExamTaking
-            examId={activeExamId}
-            onFinishExam={handleExamFinished}
-            onExit={() => setActiveExamId(null)}
-          />
-        </div>
-      )}
-
-      {/* 3. NORMAL VIEWS */}
-      {(!activeExamId || currentUser.role !== 'student') && (
-        <>
-          {/* ======================================================== */}
-          {/* TEACHER DESKTOP VIEW                                     */}
-          {/* ======================================================== */}
-          {currentUser.role === 'teacher' && (
-            <div className="flex min-h-[calc(100vh-45px)]">
-              <Sidebar
-                currentTab={teacherTab}
-                onSelectTab={setTeacherTab}
-                onOpenCreateExam={() => setTeacherTab('create_exam')}
-                currentUser={currentUser}
-                onSwitchToStudent={switchToStudent}
-                onSwitchToParent={switchToParent}
-              />
-
-              <div className="flex-1 flex flex-col min-w-0">
-                <Header
-                  currentUser={currentUser}
-                  onQuickAssign={() => setTeacherTab('create_exam')}
-                  onOpenHelp={() => setShowGuideModal(true)}
-                />
-
-                <main className="flex-1 p-6 md:p-8 ml-64 max-w-7xl">
-                  {teacherTab === 'overview' && (
-                    <ClassOverview
-                      onNavigateTab={setTeacherTab}
-                      onOpenCreateExam={() => setTeacherTab('create_exam')}
-                      onOpenCreateAccount={() => setShowCreateAccountModal(true)}
-                    />
-                  )}
-
-                  {teacherTab === 'students' && (
-                    <StudentManagement
-                      onOpenCreateAccount={() => setShowCreateAccountModal(true)}
-                      onSelectStudentDetail={(_id) => setTeacherTab('analytics')}
-                    />
-                  )}
-
-                  {teacherTab === 'questions' && (
-                    <QuestionBank />
-                  )}
-
-                  {teacherTab === 'create_exam' && (
-                    <CreateExam
-                      onSuccess={() => {
-                        alert('🎉 Đã giao bài tập thành công cho lớp 6A4!');
-                        setTeacherTab('overview');
-                      }}
-                    />
-                  )}
-
-                  {teacherTab === 'analytics' && (
-                    <ClassAnalytics />
-                  )}
-
-                  {teacherTab === 'settings' && (
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4 max-w-3xl">
-                      <h2 className="text-xl font-bold text-slate-900">Cài đặt lớp học &amp; Cấu hình hệ thống</h2>
-                      <p className="text-xs text-slate-500">
-                        Quản lý niên khóa, phân quyền giáo viên bộ môn và kết nối cơ sở dữ liệu Supabase.
-                      </p>
-                      <div className="pt-2 flex flex-wrap gap-3">
-                        <button
-                          onClick={() => setShowGuideModal(true)}
-                          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2"
-                        >
-                          <span className="material-symbols-outlined text-sm">database</span>
-                          <span>Xem hướng dẫn kết nối Supabase &amp; Vercel</span>
-                        </button>
-                        <button
-                          onClick={() => setShowCreateAccountModal(true)}
-                          className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs"
-                        >
-                          Cấp tài khoản mới
-                        </button>
-                        <button
-                          onClick={switchToStudent}
-                          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5"
-                        >
-                          <span className="material-symbols-outlined text-sm">backpack</span>
-                          <span>Mở giao diện Học sinh</span>
-                        </button>
-                        <button
-                          onClick={switchToParent}
-                          className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center gap-1.5"
-                        >
-                          <span className="material-symbols-outlined text-sm">family_restroom</span>
-                          <span>Mở giao diện Phụ huynh</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </main>
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* STUDENT MOBILE VIEW (Em Nguyễn Minh Khang)               */}
-          {/* ======================================================== */}
-          {currentUser.role === 'student' && (
-            <div className="flex-1 flex flex-col items-center justify-start py-4 px-2 sm:px-4 bg-slate-100/70">
-              {/* Context Banner on Top */}
-              <div className="w-full max-w-md mb-2 flex items-center justify-between px-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-600 font-semibold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>Đang xem: <strong>Giao diện Học sinh</strong> (Em Nguyễn Minh Khang)</span>
-                </div>
-                <button
-                  onClick={switchToTeacher}
-                  className="text-blue-600 hover:underline font-bold flex items-center gap-1"
-                >
-                  <span>Về Giáo viên</span>
-                  <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                </button>
-              </div>
-
-              {/* Phone Frame Mockup Container */}
-              <div
-                className={`w-full transition-all duration-200 ${
-                  isMobileFrame
-                    ? 'max-w-[420px] bg-white rounded-[40px] shadow-2xl border-[10px] border-slate-800 overflow-hidden relative flex flex-col min-h-[780px]'
-                    : 'max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col'
-                }`}
-              >
-                {/* Simulated Phone Status Bar */}
-                {isMobileFrame && (
-                  <div className="bg-white px-6 pt-3 pb-1 flex items-center justify-between text-[11px] font-bold text-slate-800 select-none border-b border-slate-50">
-                    <span>9:41</span>
-                    {/* Simulated Notch / Dynamic Island */}
-                    <div className="w-24 h-4 bg-slate-900 rounded-full mx-auto"></div>
-                    <div className="flex items-center gap-1.5 text-slate-700">
-                      <span className="material-symbols-outlined text-xs">signal_cellular_alt</span>
-                      <span className="material-symbols-outlined text-xs">wifi</span>
-                      <span className="material-symbols-outlined text-xs">battery_full</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Mobile Header */}
-                <Header
-                  currentUser={currentUser}
-                  onOpenHelp={() => setShowGuideModal(true)}
-                />
-
-                {/* Main Scrollable Canvas */}
-                <div className="flex-1 overflow-y-auto px-4 py-3 pb-24">
-                  {/* Result view if reviewing submission */}
-                  {viewSubmissionId ? (
-                    <ExamResult
-                      submissionId={viewSubmissionId}
-                      onRetryWrong={() => {
-                        setViewSubmissionId(null);
-                        setStudentTab('wrong_book');
-                      }}
-                      onGoHome={() => {
-                        setViewSubmissionId(null);
-                        setStudentTab('home');
-                      }}
-                      onSelfPractice={() => {
-                        setViewSubmissionId(null);
-                        setStudentTab('self_practice');
-                      }}
-                    />
-                  ) : (
-                    <>
-                      {studentTab === 'home' && (
-                        <StudentHome
-                          onStartExam={handleStartExam}
-                          onNavigateTab={setStudentTab}
-                        />
-                      )}
-
-                      {studentTab === 'self_practice' && (
-                        <SelfPractice onStartCustomPractice={handleStartCustomPractice} />
-                      )}
-
-                      {studentTab === 'exam' && (
-                        <div className="space-y-4 pt-1">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h2 className="text-lg font-bold text-slate-900">Bài tập &amp; Kiểm tra đã giao</h2>
-                              <p className="text-xs text-slate-500">Hoàn thành đúng hạn để nhận sao tích lũy!</p>
-                            </div>
-                            <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-md">Lớp 6A4</span>
-                          </div>
-
-                          {/* Active Exam Card */}
-                          <div className="bg-white rounded-2xl p-4 border border-blue-200 shadow-sm space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-orange-700 bg-orange-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                <span className="material-symbols-outlined text-xs">timer</span>
-                                Hạn chót: 21:00 hôm nay
-                              </span>
-                              <span className="text-xs font-bold text-slate-500">15 câu • 20 phút</span>
-                            </div>
-
-                            <h3 className="font-bold text-slate-900 text-sm">
-                              Bài 23: Phân số bằng nhau (Kèm ôn tập rút gọn phân số)
-                            </h3>
-                            <p className="text-xs text-slate-600">
-                              Yêu cầu: Nắm vững định nghĩa phân số bằng nhau và tính chất cơ bản của phân số.
-                            </p>
-
-                            <button
-                              onClick={() => handleStartExam('exam-01')}
-                              className="tactile-btn-blue w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm"
-                            >
-                              <span className="material-symbols-outlined text-base">play_arrow</span>
-                              <span>Bắt đầu làm bài ngay</span>
-                            </button>
-                          </div>
-
-                          {/* Completed Exam Card */}
-                          <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3 opacity-95">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                <span className="material-symbols-outlined text-xs">check_circle</span>
-                                Đã hoàn thành • 8.5/10
-                              </span>
-                              <span className="text-xs text-slate-400">15 câu</span>
-                            </div>
-
-                            <h3 className="font-bold text-slate-800 text-sm">
-                              Bài 22: Hình có trục đối xứng và tâm đối xứng
-                            </h3>
-
-                            <button
-                              onClick={() => setViewSubmissionId('sub-01')}
-                              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5"
-                            >
-                              <span className="material-symbols-outlined text-base">visibility</span>
-                              <span>Xem lại bài làm &amp; Lời giải chi tiết</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {studentTab === 'wrong_book' && (
-                        <WrongQuestionBook onPracticeAgain={(_qid) => handleStartExam('exam-01')} />
-                      )}
-
-                      {studentTab === 'progress' && (
-                        <StudentProgress />
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Mobile Bottom Navigation */}
-                <BottomNav
-                  role="student"
-                  activeTab={studentTab}
-                  onSelectTab={(tab) => {
-                    setViewSubmissionId(null);
-                    setStudentTab(tab);
-                  }}
-                  unresolvedWrongCount={unresolvedWrongCount}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* PARENT MOBILE VIEW (Anh Nguyễn Văn Thành)                 */}
-          {/* ======================================================== */}
-          {currentUser.role === 'parent' && (
-            <div className="flex-1 flex flex-col items-center justify-start py-4 px-2 sm:px-4 bg-slate-100/70">
-              {/* Context Banner on Top */}
-              <div className="w-full max-w-md mb-2 flex items-center justify-between px-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-600 font-semibold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse"></span>
-                  <span>Đang xem: <strong>Giao diện Phụ huynh</strong> (Anh Thành - Bố em Khang)</span>
-                </div>
-                <button
-                  onClick={switchToTeacher}
-                  className="text-blue-600 hover:underline font-bold flex items-center gap-1"
-                >
-                  <span>Về Giáo viên</span>
-                  <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                </button>
-              </div>
-
-              {/* Phone Frame Mockup Container */}
-              <div
-                className={`w-full transition-all duration-200 ${
-                  isMobileFrame
-                    ? 'max-w-[420px] bg-white rounded-[40px] shadow-2xl border-[10px] border-slate-800 overflow-hidden relative flex flex-col min-h-[780px]'
-                    : 'max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col'
-                }`}
-              >
-                {/* Simulated Phone Status Bar */}
-                {isMobileFrame && (
-                  <div className="bg-white px-6 pt-3 pb-1 flex items-center justify-between text-[11px] font-bold text-slate-800 select-none border-b border-slate-50">
-                    <span>9:41</span>
-                    {/* Simulated Notch / Dynamic Island */}
-                    <div className="w-24 h-4 bg-slate-900 rounded-full mx-auto"></div>
-                    <div className="flex items-center gap-1.5 text-slate-700">
-                      <span className="material-symbols-outlined text-xs">signal_cellular_alt</span>
-                      <span className="material-symbols-outlined text-xs">wifi</span>
-                      <span className="material-symbols-outlined text-xs">battery_full</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Mobile Header */}
-                <Header
-                  currentUser={currentUser}
-                  onOpenContact={() => setIsParentInChat(true)}
-                  onOpenHelp={() => setShowGuideModal(true)}
-                />
-
-                {/* Main Scrollable Canvas */}
-                <div className="flex-1 overflow-y-auto px-4 py-3 pb-24">
-                  {isParentInChat ? (
-                    <ParentContact onBack={() => setIsParentInChat(false)} />
-                  ) : (
-                    <>
-                      {parentTab === 'parent_overview' && (
-                        <ParentDashboard
-                          onOpenHistory={() => setParentTab('parent_history')}
-                          onOpenContact={() => setIsParentInChat(true)}
-                          onRemindChild={() => {}}
-                        />
-                      )}
-
-                      {parentTab === 'parent_progress' && (
-                        <div className="space-y-4">
-                          <StudentProgress />
-                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-xs text-blue-900 space-y-2">
-                            <h4 className="font-bold flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-blue-600 text-sm">info</span>
-                              Ghi chú từ Cô Tâm (GVCN &amp; Giáo viên Toán 6A4)
-                            </h4>
-                            <p className="text-slate-700 leading-relaxed">
-                              Em Khang tiếp thu nhanh lý thuyết các phép toán phân số và số nguyên. Gia đình tiếp tục động viên con duy trì chuỗi học tập 5 ngày liên tiếp và rèn thêm tính cẩn thận khi phá ngoặc nhé!
-                            </p>
-                            <button
-                              onClick={() => setIsParentInChat(true)}
-                              className="mt-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700"
-                            >
-                              Nhắn tin trao đổi với cô Tâm
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {parentTab === 'parent_history' && (
-                        <ParentHistory
-                          onOpenContact={() => setIsParentInChat(true)}
-                          onViewSubmissionDetail={(_subId) => {
-                            alert('Báo cáo phân tích: Con làm trong 18 phút (đúng mức thời gian dự kiến), hoàn thành 15/15 câu, đạt 8.5/10 điểm.');
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Mobile Bottom Navigation */}
-                <BottomNav
-                  role="parent"
-                  activeTab={parentTab}
-                  onSelectTab={(tab) => {
-                    setIsParentInChat(false);
-                    setParentTab(tab);
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Floating Role Switcher with quick demo selector */}
-      <RoleSwitcher
-        currentUser={currentUser}
-        onSelectUser={(u) => {
-          setUser(u);
-          setActiveExamId(null);
-          setViewSubmissionId(null);
-          setIsParentInChat(false);
-        }}
-        onOpenLogin={() => setShowLoginModal(true)}
-        onOpenGuide={() => setShowGuideModal(true)}
-      />
-
-      {/* Login Modal */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-4 shadow-2xl relative">
-            <LoginView
-              onLoginSuccess={(u) => {
-                setUser(u);
-                setShowLoginModal(false);
-              }}
-              onCancel={() => setShowLoginModal(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Create Account Modal for Teacher */}
-      <CreateAccountModal
-        isOpen={showCreateAccountModal}
-        onClose={() => setShowCreateAccountModal(false)}
-        onSuccess={() => {
-          setShowCreateAccountModal(false);
-          alert('Cấp tài khoản học sinh & liên kết phụ huynh thành công!');
-        }}
-      />
-
-      {/* Setup Guide Modal (Supabase & Vercel) */}
-      <SetupGuideModal
-        isOpen={showGuideModal}
-        onClose={() => setShowGuideModal(false)}
-      />
-    </div>
-  );
+  const teacherNav = [['overview', 'Tổng quan', LayoutDashboard], ['students', 'Học sinh', Users], ['questions', 'Ngân hàng câu hỏi', BookOpen], ['create_exam', 'Tạo đề & giao bài', ClipboardList], ['analytics', 'Kết quả', BarChart3], ['settings', 'Cài đặt', Settings]] as const;
+  const learnerNav = user.role === 'parent' ? [['overview', 'Tổng quan', LayoutDashboard], ['progress', 'Tiến độ', BarChart3], ['history', 'Sổ bài làm', ClipboardList], ['contact', 'Liên hệ', Users]] as const : [['overview', 'Trang chủ', LayoutDashboard], ['practice', 'Tự ôn luyện', BookOpen], ['exam', 'Làm bài', ClipboardList], ['wrong', 'Sổ câu sai', BookOpen], ['history', 'Tiến độ', BarChart3]] as const;
+  const nav = user.role === 'teacher' ? teacherNav : learnerNav;
+  const average = submissions.length ? (submissions.reduce((s, item) => s + item.score, 0) / submissions.length).toFixed(1) : '--';
+  return <div className={`app-shell legacy-theme role-${user.role}`}>
+    {!activeExam && <>
+      {menu && <button className="nav-backdrop" aria-label="Đóng điều hướng" onClick={() => setMenu(false)} />}
+      {user.role === 'teacher' ? <div className={`original-sidebar ${menu ? 'is-open' : ''}`}><Sidebar currentTab={tab} onSelectTab={navigate} onOpenCreateExam={() => navigate('create_exam')} currentUser={user} onLogout={onLogout} onChangePassword={() => navigate('password')} unreadCount={unreadMessageCount()} /></div> : <aside className={`app-sidebar ${menu ? 'is-open' : ''}`}><div className="app-brand"><span className="material-symbols-outlined">functions</span><div><strong>Toán 6</strong><small>Kết nối tri thức</small></div></div><div className="user-context"><strong>{user.fullName}</strong><span>{user.className || 'Lớp 6A'}</span></div><nav>{nav.map(([id, label, Icon]) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => navigate(id)}><Icon size={20} /><span>{label}</span></button>)}</nav><div className="sidebar-account-actions"><button className="secondary-button" onClick={() => navigate('password')}><KeyRound size={16} />Đổi mật khẩu</button><button className="secondary-button" onClick={onLogout}><LogOut size={16} />Đăng xuất</button></div></aside>}
+      <div className="legacy-header"><Header currentUser={user} onQuickAssign={() => navigate('create_exam')} onSearch={query => { navigate('students'); setStudentSearch(query); }} onOpenHelp={() => setGuide(true)} onOpenContact={() => navigate('contact')} onOpenMenu={() => setMenu(!menu)} onNotify={() => { if (user.role !== 'student') return navigate('contact'); const reminders = getReminders().filter(r => !r.readAt); setNotice(reminders.length ? reminders.map(r => r.body).join(' · ') : 'Chưa có thông báo mới.'); readReminders(); }} /></div>
+    </>}
+    <main className={activeExam ? 'exam-workspace' : 'app-workspace'} key={user.id}><React.Suspense fallback={<div className="view-loading" role="status">Đang tải...</div>}>
+      {activeExam ? <ExamTaking key={activeExam} examId={activeExam} onExit={() => { localStorage.removeItem(`active_exam_${user.id}`); setActiveExam(null); }} onFinishExam={id => { localStorage.removeItem(`active_exam_${user.id}`); setActiveExam(null); setResult(id); }} /> : result ? <ExamResult submissionId={result} onGoHome={() => navigate(user.role === 'teacher' ? 'analytics' : 'overview')} onSelfPractice={() => navigate('practice')} onRetryWrong={() => navigate('wrong')} /> : tab === 'password' ? <ChangePassword /> : user.role === 'teacher' ? <>
+        {tab === 'overview' && <ClassOverview onViewExam={id => { navigate('analytics'); setSelectedExam(id); }} onNavigateTab={navigate} onOpenCreateExam={() => navigate('create_exam')} onOpenCreateAccount={() => setAccount(true)} />}
+        {tab === 'students' && <StudentManagement initialQuery={studentSearch} onOpenCreateAccount={() => setAccount(true)} onSelectStudentDetail={id => { navigate('analytics'); setSelectedStudent(id); }} />}
+        {tab === 'questions' && <QuestionBank />}
+        {tab === 'create_exam' && <CreateExam onSuccess={id => { setAssignedId(id); navigate('assigned'); }} />}
+        {tab === 'assigned' && <AssignedExams assignedId={assignedId} onDismiss={() => setAssignedId(undefined)} onCreate={() => navigate('create_exam')} onViewResults={id => { navigate('analytics'); setSelectedExam(id); }} />}
+        {tab === 'analytics' && <ClassAnalytics initialExamId={selectedExam} studentId={selectedStudent} onViewSubmission={setResult} />}
+        {tab === 'contact' && <MessageCenter />}
+        {tab === 'settings' && <section><h1>Cài đặt lớp học</h1><button className="primary-button" onClick={() => setGuide(true)}>Cấu hình Supabase</button><p className="muted">Dữ liệu hiện được lưu trên trình duyệt này.</p></section>}
+      </> : <>
+        {tab === 'overview' && (user.role === 'student' ? <StudentHome onStartExam={startExam} onNavigateTab={navigate} onViewResult={setResult} /> : <ParentDashboard onOpenHistory={() => navigate('history')} onOpenContact={() => navigate('contact')} onRemindChild={() => { try { remindChild(); setNotice('Đã lưu nhắc nhở vào thông báo của học sinh trên trình duyệt này.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Chưa lưu được nhắc nhở.'); } }} />)}
+        {(tab === 'exam' || tab === 'progress') && <><div className="page-heading"><h1>{user.role === 'parent' ? 'Tiến độ học tập' : 'Bài tập & kiểm tra đã giao'}</h1><p>{user.role === 'parent' ? user.studentName || 'Bài làm của con' : user.fullName}</p></div><div className="summary-grid"><div><span>Bài đã nộp</span><strong>{submissions.length}</strong></div><div><span>Điểm trung bình</span><strong>{average}<small> / 10</small></strong></div><div><span>Câu cần ôn lại</span><strong>{getWrongQuestions(studentId).filter(q => !q.isResolved).length}</strong></div></div><div className="exam-list">{exams.map(exam => {
+          const attempts = submissions.filter(s => s.examId === exam.id);
+          const expired = Date.now() > Date.parse(exam.deadline) || exam.status === 'closed';
+          return <article className="exam-item" key={exam.id}><div><span className={`status ${expired ? 'closed' : ''}`}>{expired ? 'Đã hết hạn' : 'Đang giao'}</span><h2>{exam.title}</h2><p>{exam.questions.length} câu · {exam.timeLimitMinutes} phút</p><p>Hạn nộp: {new Date(exam.deadline).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</p>{attempts.length > 0 && <p>Đã nộp {attempts.length} lượt · Điểm gần nhất: {attempts[0].score}/10</p>}</div><div className="item-actions">{user.role === 'student' && <button className="primary-button" disabled={!localStorage.getItem(`draft_exam_${user.id}_${exam.id}`) && (expired || attempts.length >= exam.maxRetries)} onClick={() => startExam(exam.id)}>{localStorage.getItem(`draft_exam_${user.id}_${exam.id}`) ? 'Tiếp tục' : expired ? 'Đã hết hạn' : attempts.length >= exam.maxRetries ? 'Đã hết lượt' : attempts.length ? 'Làm lại' : 'Làm bài'}</button>}{attempts[0] && <button className="secondary-button" onClick={() => setResult(attempts[0].id)}>Xem kết quả</button>}</div></article>;
+        })}{!exams.length && <p className="empty-state">Chưa có bài tập được giao.</p>}</div></>}
+        {tab === 'practice' && <SelfPractice onStartCustomPractice={(chapter, lesson) => practice(getQuestionBank().filter(q => q.chapterId === chapter && (!lesson || q.lessonId === lesson)).slice(0, 10))} />}
+        {tab === 'wrong' && <WrongQuestionBook onPracticeAgain={qid => practice(getWrongQuestions(user.id).filter(w => qid ? w.questionId === qid : !w.isResolved).map(w => w.question))} />}
+        {tab === 'history' && <section><h1>Kết quả học tập</h1><div className="exam-list">{submissions.map(s => <article className="exam-item" key={s.id}><div><h2>{s.examTitle}</h2><p>{new Date(s.submittedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} · {s.correctCount}/{s.totalQuestions} câu đúng</p></div><div className="item-actions"><strong>{s.score}/10</strong><button className="secondary-button" onClick={() => setResult(s.id)}>Chi tiết</button></div></article>)}{!submissions.length && <p className="empty-state">Chưa có bài làm.</p>}</div></section>}
+        {tab === 'contact' && <MessageCenter />}
+      </>}
+    </React.Suspense>{!activeExam && <footer className="account-footer"><button className="secondary-button" onClick={() => navigate('password')}><KeyRound size={16} />Đổi mật khẩu</button><button className="secondary-button" onClick={onLogout}><LogOut size={16} />Đăng xuất</button></footer>}</main>
+    {!activeExam && user.role !== 'teacher' && <div className="original-bottom-nav"><BottomNav role={user.role} activeTab={user.role === 'parent' ? ({ overview: 'parent_overview', progress: 'parent_progress', history: 'parent_history', contact: 'parent_contact' }[tab] || tab) : ({ overview: 'home', practice: 'self_practice', exam: 'exam', wrong: 'wrong_book', history: 'progress' }[tab] || tab)} onSelectTab={navigate} unresolvedWrongCount={getWrongQuestions(studentId).filter(q => !q.isResolved).length} /></div>}
+    {notice && <div className="app-notice" role="status">{notice}<button className="icon-button" aria-label="Đóng thông báo" onClick={() => setNotice('')}><X size={18} /></button></div>}
+    <CreateAccountModal isOpen={account} onClose={() => setAccount(false)} onSuccess={() => { setAccount(false); setNotice('Đã tạo tài khoản và liên kết phụ huynh.'); }} />
+    <SetupGuideModal isOpen={guide} onClose={() => setGuide(false)} />
+  </div>;
 }
