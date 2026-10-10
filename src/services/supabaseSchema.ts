@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   role TEXT NOT NULL CHECK (role IN ('teacher', 'student', 'parent')),
   phone TEXT,
   email TEXT,
-  class_id TEXT DEFAULT 'class-6a2',
-  class_name TEXT DEFAULT 'Lớp 6A2',
+  class_id TEXT DEFAULT 'class-6d',
+  class_name TEXT DEFAULT 'Lớp 6D',
   student_group TEXT, -- Tổ 1, Tổ 2, Tổ 3, Tổ 4
   birth_date DATE,
   linked_student_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- Dành cho Phụ huynh liên kết với con

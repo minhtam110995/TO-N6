@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { getQuestionBank, saveQuestion, deleteQuestion } from '../../services/storage';
+import { getQuestionBank, saveQuestion, deleteQuestion, subscribeToStore } from '../../services/storage';
 import { CHAPTERS_DATA } from '../../data/seedQuestions';
 import { Question, CognitiveLevel, QuestionType } from '../../types';
-import { MathRenderer } from '../common/MathRenderer';
+import { MathRenderer, MathText } from '../common/MathRenderer';
 import { QuestionImport } from './QuestionImport';
 
 export const QuestionBank: React.FC = () => {
@@ -14,6 +14,7 @@ export const QuestionBank: React.FC = () => {
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importMessage, setImportMessage] = useState('');
+  useEffect(() => subscribeToStore(() => setBank(getQuestionBank())), []);
 
   // Form states for adding/editing question
   const [formChapter, setFormChapter] = useState(6);
@@ -42,10 +43,9 @@ export const QuestionBank: React.FC = () => {
     return matchChap && matchLvl && matchSearch;
   });
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Bạn có chắc muốn xoá câu hỏi này khỏi ngân hàng?')) {
-      deleteQuestion(id);
-      refreshBank();
+      try { await deleteQuestion(id); refreshBank(); } catch (e) { alert(e instanceof Error ? e.message : 'Chưa xóa được câu hỏi.'); }
     }
   };
 
@@ -64,7 +64,7 @@ export const QuestionBank: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formContent.trim()) {
       alert('Vui lòng nhập nội dung câu hỏi!');
@@ -97,10 +97,8 @@ export const QuestionBank: React.FC = () => {
       difficultyScore: formLevel === 'nhan_biet' ? 0.5 : formLevel === 'thong_hieu' ? 0.75 : 1.0,
     };
 
-    saveQuestion(newQ);
-    refreshBank();
-    setIsModalOpen(false);
-    alert('Đã lưu câu hỏi vào ngân hàng thành công!');
+    try { await saveQuestion(newQ); refreshBank(); setIsModalOpen(false); alert('Đã lưu câu hỏi vào ngân hàng thành công!'); }
+    catch (error) { alert(error instanceof Error ? error.message : 'Chưa lưu được câu hỏi.'); }
   };
 
   const handleExportJSON = () => {
@@ -213,7 +211,7 @@ export const QuestionBank: React.FC = () => {
               </div>
             </div>
 
-            <p className="font-semibold text-sm text-slate-900">{q.content}</p>
+            <p className="font-semibold text-sm text-slate-900">{<MathText text={q.content} />}</p>
 
             {q.mathFormula && (
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-center font-bold text-base text-blue-700">
@@ -230,7 +228,7 @@ export const QuestionBank: React.FC = () => {
                       opt.isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-200 bg-white text-slate-700'
                     }`}
                   >
-                    <span>{opt.label}. {opt.text}</span>
+                    <span>{opt.label}. {<MathText text={opt.text} />}</span>
                     {opt.isCorrect && <span className="text-emerald-700 font-bold">✓ Đáp án đúng</span>}
                   </div>
                 ))}
@@ -241,7 +239,7 @@ export const QuestionBank: React.FC = () => {
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center gap-2">
                 <span className="font-semibold text-slate-700">Đáp án điền số chấp nhận:</span>
                 <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-emerald-300 text-emerald-800">
-                  {q.correctAnswers?.join(' | ')}
+                  {<MathText text={q.correctAnswers?.join(' | ') || ''} />}
                 </span>
               </div>
             )}
@@ -250,7 +248,7 @@ export const QuestionBank: React.FC = () => {
               <span className="material-symbols-outlined text-blue-600 text-base">lightbulb</span>
               <div>
                 <strong className="text-blue-900">Lời giải từng bước: </strong>
-                {q.solutionSteps[0]?.explanation}
+                {<MathText text={q.solutionSteps[0]?.explanation || ''} />}
                 {q.teacherAdvice && <p className="text-orange-700 font-medium mt-0.5">💡 Lời khuyên: {q.teacherAdvice}</p>}
               </div>
             </div>

@@ -48,7 +48,7 @@ export const TopRoleBar: React.FC<TopRoleBarProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-sm">school</span>
-            <span className="role-label-full">1. Giáo viên (Cô Tâm - 6A4)</span><span className="role-label-short">Giáo viên</span>
+            <span className="role-label-full">1. Giáo viên (Cô Tâm - 6D)</span><span className="role-label-short">Giáo viên</span>
             {currentUser.role === 'teacher' && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
             )}

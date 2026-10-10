@@ -5,8 +5,8 @@ export const CURRENT_TEACHER: User = {
   username: 'cotamtoan',
   fullName: 'Cô Tâm',
   role: 'teacher',
-  className: 'Lớp 6A',
-  classId: 'class-6a4',
+  className: 'Lớp 6D',
+  classId: 'class-6d',
   status: 'active',
 };
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getExams, getSubmissions, getCurrentUser } from '../../services/storage';
-import { MathRenderer } from '../common/MathRenderer';
+import { MathRenderer, MathText } from '../common/MathRenderer';
 
 interface ExamResultProps { submissionId?: string; onRetryWrong: () => void; onGoHome: () => void; onSelfPractice: () => void }
 export const ExamResult: React.FC<ExamResultProps> = ({ submissionId, onRetryWrong, onGoHome, onSelfPractice }) => {
@@ -19,11 +19,11 @@ export const ExamResult: React.FC<ExamResultProps> = ({ submissionId, onRetryWro
       if (filter === 'correct' && !answer.isCorrect || filter === 'wrong' && answer.isCorrect) return null;
       const question = exam?.questions.find(q => q.id === answer.questionId);
       return <article className="solution-item" key={`${answer.questionId}-${index}`}><div className="solution-heading"><strong>Câu {index + 1}</strong><span className={answer.isCorrect ? 'correct' : 'incorrect'}>{answer.isCorrect ? 'Đúng' : 'Chưa đúng'}</span></div>
-        {question && <p>{question.content}</p>}
+        {question && <p>{<MathText text={question.content} />}</p>}
         {question?.mathFormula && <MathRenderer formula={question.mathFormula} />}
         {question?.svgIllustration && <img className="question-illustration" alt="Hình minh họa câu hỏi" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(question.svgIllustration)}`} />}
         <p>{teacherView ? 'Học sinh trả lời' : 'Đáp án của bạn'}: {question?.type === 'multiple_choice' ? question.options?.find(o => o.id === answer.selectedAnswerText || o.label === answer.selectedAnswerText)?.text || answer.selectedAnswerText || 'Chưa trả lời' : question?.type === 'true_false' ? question.statements?.map(statement => { let selected: Record<string, boolean> = {}; try { selected = JSON.parse(answer.selectedAnswerText || '{}'); } catch {} return `${statement.text}: ${selected[statement.id] === undefined ? 'Chưa trả lời' : selected[statement.id] ? 'Đúng' : 'Sai'}`; }).join(' · ') : answer.selectedAnswerText || 'Chưa trả lời'}</p>
-        {showSolution && question && <><p>Đáp án đúng: {question.type === 'true_false' ? question.statements?.map(s => `${s.text}: ${s.isCorrect ? 'Đúng' : 'Sai'}`).join(' · ') : question.correctAnswers?.join(' / ') || question.options?.find(o => o.isCorrect)?.text}</p>{question.solutionSteps.map(step => <div key={step.step}><strong>{step.title}</strong><p>{step.explanation}</p></div>)}</>}
+        {showSolution && question && <><p>Đáp án đúng: {question.type === 'true_false' ? question.statements?.map(s => `${s.text}: ${s.isCorrect ? 'Đúng' : 'Sai'}`).join(' · ') : question.correctAnswers?.join(' / ') || question.options?.find(o => o.isCorrect)?.text}</p>{question.solutionSteps.map(step => <div key={step.step}><strong>{step.title}</strong><p>{<MathText text={step.explanation} />}</p></div>)}</>}
       </article>;
     })}</div>
   </section>;

@@ -1,5 +1,8 @@
 import { Question, CognitiveLevel } from '../types';
-import { CHAPTERS_DATA } from './seedQuestions';
+import { CHAPTERS_DATA, SEED_QUESTIONS } from './seedQuestions';
+
+export const QUESTION_BANK_TARGET = 2000;
+export const CHAPTER_QUESTION_TARGETS = CHAPTERS_DATA.map((chapter, i) => ({ chapterId: chapter.id, count: Math.floor(QUESTION_BANK_TARGET / CHAPTERS_DATA.length) + (i < QUESTION_BANK_TARGET % CHAPTERS_DATA.length ? 1 : 0) }));
 
 const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : Math.abs(a);
 const fraction = (a: number, b: number) => { const d = gcd(a, b); return b / d === 1 ? String(a / d) : `${a / d}/${b / d}`; };
@@ -10,7 +13,11 @@ function exercise(lesson: number, k: number): Task {
   const a = k + 3, b = k + 5;
   switch (lesson) {
     case 1: return [`Tập hợp A gồm các số tự nhiên x thỏa mãn ${a} < x ≤ ${a + 6}. A có bao nhiêu phần tử?`, 6, `A = {${Array.from({ length: 6 }, (_, i) => a + i + 1).join('; ')}} nên có 6 phần tử.`];
-    case 2: return [`Trong số ${a * 1000 + 247}, chữ số ${a % 10} ở hàng nghìn có giá trị bao nhiêu?`, (a % 10) * 1000, `Chữ số hàng nghìn là ${a % 10}, có giá trị ${a % 10} × 1000 = ${(a % 10) * 1000}.`];
+    case 2: {
+      const digit = (k + 2) % 9 + 1;
+      const number = 10000 + digit * 1000 + (247 + k * 11) % 1000;
+      return [`Trong số ${number}, chữ số ở hàng nghìn có giá trị bao nhiêu?`, digit * 1000, `Chữ số hàng nghìn là ${digit}, có giá trị ${digit} × 1000 = ${digit * 1000}.`];
+    }
     case 3: return [`Có bao nhiêu số tự nhiên lớn hơn ${a * 10} và nhỏ hơn ${a * 10 + b}?`, b - 1, `Các số từ ${a * 10 + 1} đến ${a * 10 + b - 1}: có ${b} - 1 = ${b - 1} số.`];
     case 4: return [`Tính hợp lý: ${a * 10 + 7} + ${b * 10 + 3} + ${a * 10 - 7}.`, (2 * a + b) * 10 + 3, `Nhóm số thứ nhất với số thứ ba: ${a * 20}. Cộng tiếp ${b * 10 + 3} được ${(2 * a + b) * 10 + 3}.`, 'thong_hieu'];
     case 5: return [`Một lớp có ${a} nhóm, mỗi nhóm ${b} học sinh. Chia đều cả lớp thành ${a} đội khác. Mỗi đội có bao nhiêu học sinh?`, b, `Số học sinh: ${a} × ${b} = ${a * b}. Mỗi đội: ${a * b} : ${a} = ${b}.`, 'van_dung'];
@@ -33,7 +40,7 @@ function exercise(lesson: number, k: number): Task {
     case 22: return [`Trên trục số, hai điểm A, B có tọa độ -${a} và ${a + 2 * b}. Tọa độ tâm đối xứng của đoạn AB là bao nhiêu?`, b, `Tâm đối xứng là trung điểm. Tọa độ: (-${a} + ${a + 2 * b}) : 2 = ${b}.`, 'van_dung'];
     case 23: return [`Tìm x để x/${b * 2} = ${a}/${b}.`, a * 2, `Nhân cả tử và mẫu của ${a}/${b} với 2: x = ${a * 2}.`, 'thong_hieu'];
     case 24: return [`Viết hỗn số ${a} và 2/${b} thành phân số.`, fraction(a * b + 2, b), `Tử số: ${a} × ${b} + 2 = ${a * b + 2}; giữ mẫu ${b}.`, 'thong_hieu'];
-    case 25: return [`Tính ${a}/${b} + 2/${b} - 1/${b}.`, fraction(a + 1, b), `Cùng mẫu: (${a} + 2 - 1)/${b} = ${fraction(a + 1, b)}.`];
+    case 25: return [`Tính ${a}/${b} + 2/${b} - 1/${b}.`, fraction(a + 1, b), `Cộng/trừ tử số: ${a} + 2 - 1 = ${a + 1}. Kết quả: ${a + 1}/${b} = ${fraction(a + 1, b)}.`];
     case 26: return [`Tính ${a}/${b} : ${a}/${b + 1}.`, fraction(b + 1, b), `Nhân với phân số nghịch đảo: ${a}/${b} × ${b + 1}/${a} = ${fraction(b + 1, b)}.`, 'thong_hieu'];
     case 27: return [`Một thư viện có ${a * b * 10} cuốn sách. Sách Toán chiếm ${a}/${b} tổng số. Có bao nhiêu cuốn sách Toán?`, a * a * 10, `${a * b * 10} × ${a}/${b} = ${a * a * 10} cuốn.`, 'van_dung'];
     case 28: return [`Viết phân số ${a * 10 + 7}/100 thành số thập phân.`, (a * 10 + 7) / 100, `Chia tử cho 100: dời dấu phẩy sang trái hai chữ số, được ${(a * 10 + 7) / 100}.`];
@@ -43,9 +50,12 @@ function exercise(lesson: number, k: number): Task {
     case 32: return [`Có ${a} điểm phân biệt trên cùng một đường thẳng. Có bao nhiêu đường thẳng đi qua tất cả các điểm đó?`, 1, `Qua hai điểm phân biệt chỉ có một đường thẳng; tất cả ${a} điểm đã cùng nằm trên đường đó.`];
     case 33: return [`B nằm giữa A và C. AB = ${a} cm, BC = ${b} cm. AC bằng bao nhiêu cm?`, a + b, `Vì B nằm giữa A, C nên AC = AB + BC = ${a} + ${b} = ${a + b}.`];
     case 34: return [`Đoạn AB dài ${a + b} cm, C thuộc đoạn AB với AC = ${a} cm. CB dài bao nhiêu cm?`, b, `CB = AB - AC = ${a + b} - ${a} = ${b} cm.`];
-    case 35: return [`M là trung điểm AB dài ${a * 4} cm. N là trung điểm AM. AN dài bao nhiêu cm?`, a, `AM = AB/2 = ${a * 2}; AN = AM/2 = ${a} cm.`, 'van_dung'];
+    case 35: return [`M là trung điểm AB dài ${a * 4} cm. N là trung điểm AM. AN dài bao nhiêu cm?`, a, `AM = ${a * 4}/2 = ${a * 2}; AN = ${a * 2}/2 = ${a} cm.`, 'van_dung'];
     case 36: return [`Cho ${a} tia phân biệt chung gốc. Mỗi cặp tia xác định một góc nhỏ (không xét góc lớn hơn 180°). Có bao nhiêu góc?`, a * (a - 1) / 2, `Chọn hai tia trong ${a} tia: ${a} × ${a - 1} : 2 = ${a * (a - 1) / 2}.`, 'van_dung'];
-    case 37: return [`Tia Oy nằm trong góc xOz bằng ${a * 5 + 40}°. Góc xOy bằng ${a * 5}°. Góc yOz bằng bao nhiêu độ?`, 40, `Góc yOz = góc xOz - góc xOy = ${a * 5 + 40} - ${a * 5} = 40°.`, 'thong_hieu'];
+    case 37: {
+      const first = 10 + k % 12 * 5, second = 10 + Math.floor(k / 12) * 5;
+      return [`Tia Oy nằm trong góc xOz bằng ${first + second}°. Góc xOy bằng ${first}°. Góc yOz bằng bao nhiêu độ?`, second, `Góc yOz = góc xOz - góc xOy = ${first + second} - ${first} = ${second}°.`, 'thong_hieu'];
+    }
     case 38: return [`Một bảng khảo sát có ${a} câu trả lời hợp lệ và ${b} câu trả lời không hợp lệ. Có bao nhiêu câu trả lời được dùng để phân tích?`, a, `Chỉ dùng dữ liệu hợp lệ: ${a} câu trả lời.`];
     case 39: return [`Biểu đồ tranh có ${a} biểu tượng đầy đủ, mỗi biểu tượng ứng với ${b} học sinh. Tổng số học sinh là bao nhiêu?`, a * b, `Nhân số biểu tượng với giá trị mỗi biểu tượng: ${a} × ${b} = ${a * b}.`];
     case 40: return [`Biểu đồ cột ghi số sách ba lớp lần lượt là ${a * 3}, ${b * 3}, ${a * 3 + 6}. Ba lớp có tất cả bao nhiêu sách?`, a * 6 + b * 3 + 6, `Cộng chiều cao ba cột: ${a * 3} + ${b * 3} + ${a * 3 + 6} = ${a * 6 + b * 3 + 6}.`, 'thong_hieu'];
@@ -56,7 +66,7 @@ function exercise(lesson: number, k: number): Task {
   }
 }
 
-export const ADDITIONAL_QUESTIONS: Question[] = CHAPTERS_DATA.flatMap(chapter => Array.from({ length: 50 }, (_, i) => {
+export const ADDITIONAL_QUESTIONS: Question[] = /* @__PURE__ */ CHAPTERS_DATA.flatMap(chapter => Array.from({ length: CHAPTER_QUESTION_TARGETS.find(t => t.chapterId === chapter.id)!.count - SEED_QUESTIONS.filter(q => q.chapterId === chapter.id).length }, (_, i) => {
   const lesson = chapter.lessons[i % chapter.lessons.length];
   const variant = Math.floor(i / chapter.lessons.length);
   const [content, answer, explanation, level = 'nhan_biet'] = exercise(lesson.id, variant);

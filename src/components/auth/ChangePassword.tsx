@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { changePassword } from '../../services/localAuth';
 import { getCurrentUser } from '../../services/storage';
+import { CLOUD_ENABLED } from '../../services/cloudSession';
 export function ChangePassword() {
   const [oldPassword, setOld] = useState(''); const [newPassword, setNew] = useState(''); const [repeat, setRepeat] = useState('');
   const [error, setError] = useState(''); const [success, setSuccess] = useState(false); const [busy, setBusy] = useState(false);
@@ -10,5 +11,5 @@ export function ChangePassword() {
     setBusy(true);
     try { await changePassword(getCurrentUser(), oldPassword, newPassword); setOld(''); setNew(''); setRepeat(''); setSuccess(true); }
     catch (e) { setError(e instanceof Error ? e.message : 'Chưa đổi được mật khẩu.'); } finally { setBusy(false); }
-  }}><label>Mật khẩu hiện tại<input type="password" autoComplete="current-password" required value={oldPassword} onChange={e => setOld(e.target.value)} /></label><label>Mật khẩu mới<input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={e => setNew(e.target.value)} /></label><label>Nhập lại mật khẩu mới<input type="password" autoComplete="new-password" minLength={8} required value={repeat} onChange={e => setRepeat(e.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}{success && <p role="status" className="correct">Đã đổi mật khẩu trên trình duyệt này.</p>}<button className="primary-button" disabled={busy}>{busy ? 'Đang lưu...' : 'Đổi mật khẩu'}</button></form><p className="muted">Tài khoản hiện lưu cục bộ; mật khẩu chưa đồng bộ sang thiết bị khác.</p></section>;
+  }}><label>Mật khẩu hiện tại<input type="password" autoComplete="current-password" required value={oldPassword} onChange={e => setOld(e.target.value)} /></label><label>Mật khẩu mới<input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={e => setNew(e.target.value)} /></label><label>Nhập lại mật khẩu mới<input type="password" autoComplete="new-password" minLength={8} required value={repeat} onChange={e => setRepeat(e.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}{success && <p role="status" className="correct">{CLOUD_ENABLED ? 'Đã đổi mật khẩu tài khoản Supabase.' : 'Đã đổi mật khẩu trên trình duyệt này.'}</p>}<button className="primary-button" disabled={busy}>{busy ? 'Đang lưu...' : 'Đổi mật khẩu'}</button></form>{!CLOUD_ENABLED && <p className="muted">Tài khoản hiện lưu cục bộ; mật khẩu chưa đồng bộ sang thiết bị khác.</p>}</section>;
 }

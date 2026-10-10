@@ -9,7 +9,7 @@ export const StudentProgress: React.FC = () => {
           <p className="text-xs text-slate-500">Thành tích môn Toán 6 của em Nguyễn Minh Khang</p>
         </div>
         <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2.5 py-1 rounded-full">
-          Hạng 5 Lớp 6A4
+          Hạng 5 Lớp 6D
         </span>
       </div>
 

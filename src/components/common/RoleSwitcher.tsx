@@ -61,7 +61,7 @@ export const RoleSwitcher: React.FC<RoleSwitcherProps> = ({
                 </div>
                 <div>
                   <div className="font-semibold text-xs text-slate-900">{CURRENT_TEACHER.fullName}</div>
-                  <div className="text-[11px] text-slate-500">Quản lý lớp 6A4, tạo đề, cấp mã</div>
+                  <div className="text-[11px] text-slate-500">Quản lý lớp 6D, tạo đề, cấp mã</div>
                 </div>
               </div>
               {roleBadge('teacher')}

@@ -1,6 +1,7 @@
 import { User } from '../types';
 import { CURRENT_TEACHER } from '../data/mockData';
 import { getParents, getStudents } from './storage';
+import { cloudRequest, getCloudSnapshot } from './cloudStore';
 
 type Credential = { salt: number[]; hash: string };
 const KEY = 'toan6_credentials';
@@ -28,12 +29,14 @@ export async function verifyPassword(user: User, password: string) {
   return !!record && await hashPassword(password, record.salt) === record.hash;
 }
 export async function changePassword(user: User, oldPassword: string, newPassword: string) {
+  if (getCloudSnapshot()) { await cloudRequest('changePassword', { oldPassword, newPassword }); return; }
   if (!await verifyPassword(user, oldPassword)) throw new Error('Mật khẩu hiện tại không đúng.');
   if (oldPassword === newPassword) throw new Error('Mật khẩu mới phải khác mật khẩu hiện tại.');
   const credential = await makeCredential(newPassword);
   saveCredentials([{ userId: user.id, credential }]);
 }
 export function getSessionUser(): User | undefined {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.user;
   const id = sessionStorage.getItem('toan6_session_user');
   if (sessionStorage.getItem('toan6_login_session') !== 'active') return;
   return [CURRENT_TEACHER, ...getStudents(), ...getParents()].find(user => user.id === id && user.status === 'active');

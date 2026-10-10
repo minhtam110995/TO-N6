@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-bold text-xs text-slate-900 truncate">Cô Tâm</span>
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" title="Trực tuyến"></span>
               </div>
-              <p className="text-[11px] text-slate-500 truncate">GV Toán 6A</p>
+              <p className="text-[11px] text-slate-500 truncate">GV Toán 6D</p>
             </div>
           </div>
 
@@ -131,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>}
 
           <div className="text-center">
-            <span className="text-[10px] text-slate-400">Năm học 2026-2027 • Lớp 6A</span>
+            <span className="text-[10px] text-slate-400">Năm học 2026-2027 • Lớp 6D</span>
           </div>
         </div>
       </div>

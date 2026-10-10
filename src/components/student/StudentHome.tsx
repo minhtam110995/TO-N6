@@ -1,5 +1,6 @@
 import React from 'react';
 import { getCurrentUser, getExams, getSubmissions, getWrongQuestions } from '../../services/storage';
+import { getCloudSnapshot } from '../../services/cloudStore';
 interface StudentHomeProps { onStartExam: (examId: string) => void; onNavigateTab: (tab: string) => void; onViewResult?: (id: string) => void }
 export const StudentHome: React.FC<StudentHomeProps> = ({ onStartExam, onNavigateTab, onViewResult }) => {
   const user = getCurrentUser();
@@ -16,7 +17,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ onStartExam, onNavigat
     <section className="home-tasks space-y-3"><div className="section-title"><span className="material-symbols-outlined text-blue-600">assignment</span><h3>Bài cần làm hôm nay</h3><span className="count-pill">{exams.length} bài</span></div>{exams.slice(0, 3).map((exam, index) => {
       const submission = submissions.find(s => s.examId === exam.id);
       const expired = exam.status === 'closed' || Date.parse(exam.deadline) < Date.now();
-      const draft = localStorage.getItem(`draft_exam_${user.id}_${exam.id}`);
+      const draft = getCloudSnapshot() ? getCloudSnapshot()!.attempts.find(a => a.exam_id === exam.id && Date.parse(a.ends_at) + 300000 > Date.now()) : localStorage.getItem(`draft_exam_${user.id}_${exam.id}`);
       const available = !!draft || !expired && submissions.filter(s => s.examId === exam.id).length < exam.maxRetries;
       return <article key={exam.id} className={`bg-white rounded-2xl p-4 shadow-xs space-y-3 ${index === 0 ? 'border-2 border-orange-200' : 'border border-slate-200/80'}`}><div className="flex items-center justify-between gap-2 flex-wrap"><span className="px-2 py-1 rounded bg-blue-50 text-blue-700 text-[11px] font-semibold">{exam.chapterTitle || 'Toán 6 KNTT'}</span><span className={`text-[11px] font-bold rounded-full px-2 py-1 ${submission ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{submission ? `Đã nộp · ${submission.score}/10` : expired ? 'Đã hết hạn' : 'Đang giao'}</span></div><h4 className="font-bold text-sm text-slate-900">{exam.title}</h4><div className="task-meta"><span><span className="material-symbols-outlined text-sm">alarm</span>{new Date(exam.deadline).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' })}</span><span>{exam.questions.length} câu · {exam.timeLimitMinutes} phút</span></div><button disabled={!available && !submission} className={`${index === 0 ? 'tactile-btn-orange bg-orange-600 hover:bg-orange-700' : 'tactile-btn-blue bg-blue-600 hover:bg-blue-700'} w-full h-12 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2`} onClick={() => available ? onStartExam(exam.id) : submission && onViewResult?.(submission.id)}><span className="material-symbols-outlined">{available ? 'edit_note' : 'visibility'}</span>{available ? draft ? 'Tiếp tục làm bài' : 'Làm bài ngay' : submission ? 'Xem lại bài làm' : 'Đã hết hạn'}<span className="material-symbols-outlined text-base">arrow_forward</span></button></article>;
     })}{!exams.length && <p className="empty-state">Chưa có bài tập được giao.</p>}</section>

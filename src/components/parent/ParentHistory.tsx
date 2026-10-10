@@ -291,7 +291,7 @@ export const ParentHistory: React.FC<ParentHistoryProps> = ({
             CM
           </div>
           <div>
-            <div className="text-xs text-blue-700 font-bold">Giáo viên bộ môn Toán 6A2</div>
+            <div className="text-xs text-blue-700 font-bold">Giáo viên bộ môn Toán 6D</div>
             <h4 className="font-bold text-sm text-slate-900">Cô Hoàng Thị Mai</h4>
             <p className="text-[11px] text-slate-500">Thường phản hồi trong 15 phút</p>
           </div>

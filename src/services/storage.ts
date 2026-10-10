@@ -3,6 +3,10 @@ import { CURRENT_TEACHER } from '../data/mockData';
 import { SEED_QUESTIONS } from '../data/seedQuestions';
 import { ADDITIONAL_QUESTIONS } from '../data/additionalQuestions';
 import { matrixCounts } from './examMatrix';
+import { cloudRequest, getCloudSnapshot } from './cloudStore';
+
+declare const __CLOUD_BUILD__: boolean;
+const cloudBuild = typeof __CLOUD_BUILD__ !== 'undefined' && __CLOUD_BUILD__;
 
 const DATA_VERSION = 'toan6_clean_class_v1';
 
@@ -19,8 +23,9 @@ const STORAGE_KEYS = {
   ACTIVE_EXAM_DRAFT: 'toan6_active_exam_draft',
 };
 
-// Check version and migrate cleanly to 2026-2027 Cô Tâm 6A4
+// Check version and migrate cleanly to 2026-2027 Cô Tâm 6D
 function checkVersionMigration() {
+  if (cloudBuild) return;
   const currentVer = localStorage.getItem(STORAGE_KEYS.VERSION);
   if (currentVer !== DATA_VERSION) {
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(CURRENT_TEACHER));
@@ -38,6 +43,26 @@ function checkVersionMigration() {
     const ids = new Set(bank.map(q => q.id));
     localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify([...bank, ...ADDITIONAL_QUESTIONS.filter(q => !ids.has(q.id))]));
     localStorage.setItem('toan6_bank_expansion_v1', 'done');
+  }
+  if (!localStorage.getItem('toan6_bank_2000_v2')) {
+    const bank: Question[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.QUESTIONS_BANK) || '[]');
+    const generated = new Map(ADDITIONAL_QUESTIONS.map(q => [q.id, q]));
+    const ids = new Set(bank.map(q => q.id));
+    localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify([...bank.map(q => generated.get(q.id) || q), ...ADDITIONAL_QUESTIONS.filter(q => !ids.has(q.id))]));
+    localStorage.setItem('toan6_bank_2000_v2', 'done');
+  }
+  if (!localStorage.getItem('toan6_class_6d_v1')) {
+    for (const key of [STORAGE_KEYS.CURRENT_USER, STORAGE_KEYS.STUDENTS, STORAGE_KEYS.PARENTS]) {
+      const saved = localStorage.getItem(key);
+      if (!saved) continue;
+      const value = JSON.parse(saved);
+      const rename = (user: User) => ({ ...user, className: 'Lớp 6D', classId: 'class-6d' });
+      localStorage.setItem(key, JSON.stringify(Array.isArray(value) ? value.map(rename) : rename(value)));
+    }
+    const bank: Question[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.QUESTIONS_BANK) || '[]');
+    const seedIds = new Set(SEED_QUESTIONS.map(q => q.id));
+    localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify(bank.map(q => seedIds.has(q.id) ? { ...q, content: q.content.replace(/6A[24]?/g, '6D') } : q)));
+    localStorage.setItem('toan6_class_6d_v1', 'done');
   }
 }
 checkVersionMigration();
@@ -57,6 +82,7 @@ export function notifyListeners() {
 }
 
 export function getCurrentUser(): User {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.user;
   const sessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('toan6_session_user') : null;
   if (sessionId) return [CURRENT_TEACHER, ...getStudents(), ...getParents()].find(u => u.id === sessionId) || CURRENT_TEACHER;
   const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
@@ -71,12 +97,14 @@ export function getCurrentUser(): User {
 }
 
 export function setCurrentUser(user: User) {
+  if (getCloudSnapshot()) { notifyListeners(); return; }
   if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('toan6_session_user', user.id);
   localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
   notifyListeners();
 }
 
 export function getStudents(): User[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.students;
   const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
   if (saved) {
     try {
@@ -89,6 +117,7 @@ export function getStudents(): User[] {
 }
 
 export function addStudent(studentData: Partial<User>, parentData?: Partial<User>): { student: User; parent?: User } {
+  if (getCloudSnapshot()) throw new Error('Dùng chức năng cấp tài khoản Supabase.');
   const students = getStudents();
   const parents = getParents();
 
@@ -102,7 +131,7 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
     .replace(/đ/g, 'd')
     .replace(/\s+/g, '');
 
-  const username = studentData.username || `hs6a4_${cleanName}`;
+  const username = studentData.username || `hs6d_${cleanName}`;
   if ([CURRENT_TEACHER, ...students, ...parents].some(u => u.username === username)) throw new Error('Tên đăng nhập đã tồn tại.');
   const parentUsername = parentData?.username || parentData?.phone || `ph_${username}`;
   if (parentData && (parentUsername === username || [CURRENT_TEACHER, ...students, ...parents].some(u => u.username === parentUsername))) throw new Error('Tên đăng nhập phụ huynh đã tồn tại.');
@@ -115,8 +144,8 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
     role: 'student',
     group: studentData.group || 'Tổ 1',
     birthDate: studentData.birthDate,
-    className: 'Lớp 6A',
-    classId: 'class-6a4',
+    className: 'Lớp 6D',
+    classId: 'class-6d',
     phone: studentData.phone,
     status: 'active',
     lastActive: 'Vừa tạo',
@@ -138,8 +167,8 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
       studentId: newStudentId,
       studentName: newStudent.fullName,
       email: parentData.email,
-      className: 'Lớp 6A',
-      classId: 'class-6a4',
+      className: 'Lớp 6D',
+      classId: 'class-6d',
       status: 'active',
       lastActive: 'Vừa tạo',
     };
@@ -152,6 +181,7 @@ export function addStudent(studentData: Partial<User>, parentData?: Partial<User
 }
 
 export function getParents(): User[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.parents;
   const saved = localStorage.getItem(STORAGE_KEYS.PARENTS);
   if (saved) {
     try {
@@ -164,6 +194,7 @@ export function getParents(): User[] {
 }
 
 export function getExams(): Exam[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.exams;
   const saved = localStorage.getItem(STORAGE_KEYS.EXAMS);
   if (saved) {
     try {
@@ -176,6 +207,7 @@ export function getExams(): Exam[] {
 }
 
 export function createExam(exam: Exam) {
+  if (getCloudSnapshot()) return cloudRequest('createExam', { exam });
   const exams = getExams();
   exams.unshift(exam);
   localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(exams));
@@ -183,6 +215,7 @@ export function createExam(exam: Exam) {
 }
 
 export function getSubmissions(): Submission[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.submissions;
   const saved = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
   if (saved) {
     try {
@@ -195,6 +228,11 @@ export function getSubmissions(): Submission[] {
 }
 
 export function saveSubmission(submission: Submission) {
+  if (getCloudSnapshot()) {
+    const attempt = getCloudSnapshot()!.attempts.find(a => a.exam_id === submission.examId);
+    if (!attempt) throw new Error('Không tìm thấy lượt làm bài trên máy chủ.');
+    return cloudRequest('submit', { attemptId: attempt.id, answers: Object.fromEntries(submission.answers.map(a => [a.questionId, a.selectedAnswerText || a.selectedOptionId || ''])) });
+  }
   const subs = getSubmissions();
   subs.unshift(submission);
   localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(subs));
@@ -237,9 +275,11 @@ export function saveSubmission(submission: Submission) {
   localStorage.setItem(STORAGE_KEYS.WRONG_QUESTIONS, JSON.stringify(wrongItems));
 
   notifyListeners();
+  return submission;
 }
 
 export function getWrongQuestions(studentId?: string): WrongQuestionItem[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.wrong.filter(w => !studentId || w.studentId === studentId);
   const saved = localStorage.getItem(STORAGE_KEYS.WRONG_QUESTIONS);
   if (saved) {
     try {
@@ -256,6 +296,7 @@ export function getWrongQuestions(studentId?: string): WrongQuestionItem[] {
 }
 
 export function resolveWrongQuestion(wrongItemId: string) {
+  if (getCloudSnapshot()) return cloudRequest('resolveWrong', { id: wrongItemId });
   const items = getWrongQuestions();
   const target = items.find(i => i.id === wrongItemId);
   if (target) {
@@ -266,6 +307,7 @@ export function resolveWrongQuestion(wrongItemId: string) {
 }
 
 export function getWeakTopics(): WeakTopic[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.weakTopics;
   const saved = localStorage.getItem(STORAGE_KEYS.WEAK_TOPICS);
   if (saved) {
     try {
@@ -278,6 +320,8 @@ export function getWeakTopics(): WeakTopic[] {
 }
 
 export function getQuestionBank(): Question[] {
+  if (getCloudSnapshot()) return getCloudSnapshot()!.bank || [];
+  if (cloudBuild) return [];
   const saved = localStorage.getItem(STORAGE_KEYS.QUESTIONS_BANK);
   if (saved) {
     try {
@@ -291,6 +335,7 @@ export function getQuestionBank(): Question[] {
 }
 
 export function saveQuestion(question: Question) {
+  if (getCloudSnapshot()) return cloudRequest('saveQuestion', { question });
   const bank = getQuestionBank();
   const index = bank.findIndex(q => q.id === question.id);
   if (index >= 0) {
@@ -303,12 +348,22 @@ export function saveQuestion(question: Question) {
 }
 
 export function deleteQuestion(questionId: string) {
+  if (getCloudSnapshot()) return cloudRequest('deleteQuestion', { id: questionId });
   const bank = getQuestionBank().filter(q => q.id !== questionId);
   localStorage.setItem(STORAGE_KEYS.QUESTIONS_BANK, JSON.stringify(bank));
   notifyListeners();
 }
 
 export function importQuestions(questions: Question[]) {
+  if (getCloudSnapshot()) {
+    const fingerprints = new Set(getQuestionBank().map(q => `${q.lessonId}|${q.content.trim()}|${q.mathFormula || ''}`));
+    const added = questions.filter(q => {
+      const key = `${q.lessonId}|${q.content.trim()}|${q.mathFormula || ''}`;
+      if (fingerprints.has(key)) return false;
+      fingerprints.add(key); return true;
+    }).map(q => ({ ...q, id: `q-import-${crypto.randomUUID()}` }));
+    return added.length ? cloudRequest('importQuestions', { questions: added }) as Promise<number> : Promise.resolve(0);
+  }
   const bank = getQuestionBank();
   const fingerprints = new Set(bank.map(q => `${q.lessonId}|${q.content.trim()}|${q.mathFormula || ''}`));
   let added = 0;
@@ -322,7 +377,15 @@ export function importQuestions(questions: Question[]) {
 }
 
 export function resetAllDataToDefault() {
-  Object.values(STORAGE_KEYS).filter(key => key !== STORAGE_KEYS.QUESTIONS_BANK).forEach(key => localStorage.removeItem(key));
+  if (cloudBuild || getCloudSnapshot()) throw new Error('Không xóa dữ liệu Supabase bằng chức năng dọn dữ liệu cục bộ.');
+  const records = JSON.parse(localStorage.getItem('toan6_credentials') || '{}');
+  const credentials = records[CURRENT_TEACHER.id] ? { [CURRENT_TEACHER.id]: records[CURRENT_TEACHER.id] } : {};
+  Object.values(STORAGE_KEYS).filter(key => key !== STORAGE_KEYS.QUESTIONS_BANK && key !== STORAGE_KEYS.VERSION).forEach(key => localStorage.removeItem(key));
+  ['toan6_messages', 'toan6_reminders'].forEach(key => localStorage.removeItem(key));
+  Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter((key): key is string => !!key && /^(draft_exam_|active_exam_|parent_contact_draft_|teacher_exam_draft)/.test(key)).forEach(key => localStorage.removeItem(key));
+  localStorage.setItem('toan6_credentials', JSON.stringify(credentials));
+  localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(CURRENT_TEACHER));
+  if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('toan6_session_user', CURRENT_TEACHER.id);
   checkVersionMigration();
   notifyListeners();
 }

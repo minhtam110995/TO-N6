@@ -266,7 +266,7 @@ export const SEED_QUESTIONS: Question[] = [
     lessonTitle: 'Bài 12: Bội chung. Bội chung nhỏ nhất',
     level: 'van_dung',
     type: 'fill_in_the_blank',
-    content: 'Học sinh lớp 6A4 khi xếp hàng 4, hàng 6, hàng 9 đều vừa đủ hàng. Biết số học sinh trong khoảng từ 30 đến 45 em. Hỏi lớp 6A4 có bao nhiêu học sinh?',
+    content: 'Học sinh lớp 6D khi xếp hàng 4, hàng 6, hàng 9 đều vừa đủ hàng. Biết số học sinh trong khoảng từ 30 đến 45 em. Hỏi lớp 6D có bao nhiêu học sinh?',
     correctAnswers: ['36', '36 học sinh'],
     solutionSteps: [
       { step: 1, title: 'Đưa về bài toán tìm BCNN', explanation: 'Số học sinh x là bội chung của 4, 6, 9. 4 = 2²; 6 = 2 · 3; 9 = 3². BCNN(4, 6, 9) = 2² · 3² = 36.' },
@@ -659,7 +659,7 @@ export const SEED_QUESTIONS: Question[] = [
     lessonTitle: 'Bài 31: Một số bài toán về tỉ số và tỉ số phần trăm',
     level: 'van_dung',
     type: 'fill_in_the_blank',
-    content: 'Lớp 6A4 có 40 học sinh, trong đó có 24 học sinh nữ. Hỏi số học sinh nữ chiếm bao nhiêu phần trăm số học sinh cả lớp?',
+    content: 'Lớp 6D có 40 học sinh, trong đó có 24 học sinh nữ. Hỏi số học sinh nữ chiếm bao nhiêu phần trăm số học sinh cả lớp?',
     correctAnswers: ['60%', '60', '60,0%', '60.0%'],
     solutionSteps: [
       { step: 1, title: 'Lập tỉ số', explanation: 'Tỉ số học sinh nữ so với cả lớp là 24 / 40 = 3/5 = 0,6.' },
@@ -747,7 +747,7 @@ export const SEED_QUESTIONS: Question[] = [
     lessonTitle: 'Bài 40: Biểu đồ cột',
     level: 'thong_hieu',
     type: 'multiple_choice',
-    content: 'Khi đọc một biểu đồ cột biểu diễn số lượng sách quyên góp của các tổ trong lớp 6A4, chiều cao của mỗi cột biểu thị đại lượng nào?',
+    content: 'Khi đọc một biểu đồ cột biểu diễn số lượng sách quyên góp của các tổ trong lớp 6D, chiều cao của mỗi cột biểu thị đại lượng nào?',
     options: [
       { id: 'opt-a', label: 'A', text: 'Tên của các tổ', isCorrect: false, note: 'Tên các tổ nằm ở trục ngang' },
       { id: 'opt-b', label: 'B', text: 'Số lượng sách quyên góp được của tổ tương ứng', isCorrect: true, note: 'Chiều cao cột thể hiện số liệu định lượng' },

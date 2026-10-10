@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200">
               <span className="material-symbols-outlined text-sm text-blue-600">groups</span>
-              <span>Lớp 6A - {getStudents().length} học sinh</span>
+              <span>Lớp 6D - {getStudents().length} học sinh</span>
             </span>
           </div>
         </div>
@@ -74,9 +74,10 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onNotify}
             className="relative p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition"
             title="Thông báo mới"
+            aria-label={unread ? `${unread} tin nhắn chưa đọc` : 'Thông báo mới'}
           >
             <span className="material-symbols-outlined text-xl">notifications</span>
-            {unread > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-500" />}
+            {unread > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 flex items-center justify-center rounded-full bg-orange-600 text-white text-[10px] font-bold">{unread > 99 ? '99+' : unread}</span>}
           </button>
 
           <button
@@ -96,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div className="hidden xl:block text-left text-xs">
               <div className="font-bold text-slate-900 leading-tight">Cô Tâm</div>
-              <div className="text-[10px] text-slate-500 leading-none">Chủ nhiệm 6A</div>
+              <div className="text-[10px] text-slate-500 leading-none">Chủ nhiệm 6D</div>
             </div>
           </div>
         </div>
@@ -124,7 +125,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
             <p className="text-[11px] text-slate-500">
-              {currentUser.role === 'student' ? 'Lớp 6A • THCS' : 'Lớp 6A • GV: Cô Tâm'}
+              {currentUser.role === 'student' ? 'Lớp 6D • THCS' : 'Lớp 6D • GV: Cô Tâm'}
             </p>
           </div>
         </div>

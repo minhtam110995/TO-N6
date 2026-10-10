@@ -1,11 +1,23 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
+import {createCloudHandler} from './server/cloud-core.mjs';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const cloud = createCloudHandler(env);
   return {
-    plugins: [react(), tailwindcss()],
+    define: { __CLOUD_BUILD__: env.VITE_USE_SUPABASE === 'true' },
+    plugins: [react(), tailwindcss(), {
+      name: 'toan6-cloud-api',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.split('?')[0] === '/api/cloud') void cloud(req, res);
+          else next();
+        });
+      },
+    }],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
