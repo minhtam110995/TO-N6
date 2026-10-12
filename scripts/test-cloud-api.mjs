@@ -96,6 +96,20 @@ try {
   assert.equal(Object.keys((await call('studentA', 'snapshot')).snapshot.drafts).length, 1);
   assert.equal(Object.keys((await call('studentB', 'snapshot')).snapshot.drafts).length, 0);
   step = 'parent provisioning and password change';
+  const practiceExam = { ...exam, id: prefix + '-practice', type: 'practice', showSolutionAfter: 'submit', assignedTo: [a.profile.id] };
+  const opened = await call('studentA', 'createExam', { exam: practiceExam, startImmediately: true });
+  assert.ok(opened.result.attempt.id);
+  assert.ok(opened.snapshot.attempts.some(attempt => attempt.exam_id === practiceExam.id));
+  assert.ok(opened.snapshot.exams.find(e => e.id === practiceExam.id).questions.length);
+  assert.equal('correctAnswers' in opened.snapshot.exams.find(e => e.id === practiceExam.id).questions[0], false);
+  await denied(call('teacher', 'createExam', { exam: { ...exam, id: prefix + '-invalid-auto' }, startImmediately: true }));
+  const practiceResult = await call('studentA', 'submit', { attemptId: opened.result.attempt.id, answers: { [q.id]: '1/2' } });
+  assert.equal(practiceResult.result.score, 10);
+  const draftSaved = await call('studentA', 'saveDraft', { id: 'practice-check', payload: { answers: {} } });
+  assert.equal(draftSaved.snapshot, undefined);
+  assert.ok(draftSaved.drafts[a.profile.id + ':practice-check']);
+  const draftDeleted = await call('studentA', 'deleteDraft', { id: 'practice-check' });
+  assert.equal(draftDeleted.drafts[a.profile.id + ':practice-check'], undefined);
   const parentPassword = randomUUID() + 'aA1!';
   const linked = (await call('teacher', 'linkParent', { studentId: b.profile.id, input: { fullName: 'QA parent B', username: prefix + 'linkedparent', phone: '' }, password: parentPassword })).result;
   authIds.add(linked.auth_user_id);
@@ -111,7 +125,9 @@ try {
   if (process.argv.includes('--ui')) {
     console.log('DISPOSABLE_UI_FIXTURES ' + JSON.stringify({ teacher: { username: teacher.profile.username, password: teacher.password }, student: { username: a.profile.username, password: a.password }, parent: { username: parent.profile.username, password: parent.password } }));
     console.log('Waiting for Enter to clean up the disposable UI class.');
+    const keepAlive = setInterval(() => {}, 1000);
     await new Promise(resolve => { process.stdin.once('data', resolve); process.stdin.resume(); });
+    clearInterval(keepAlive);
     process.stdin.pause();
   }
 } catch (e) {

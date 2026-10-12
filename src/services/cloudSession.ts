@@ -40,7 +40,9 @@ function attach(snapshot: Parameters<typeof setCloudSnapshot>[0]) {
           const updated = await authClient().auth.setSession(data.result.session);
           if (updated.error) throw new Error('Đã đổi mật khẩu. Hãy đăng xuất rồi đăng nhập bằng mật khẩu mới.');
         }
-        setCloudSnapshot(data.snapshot); connectionError = ''; notifyListeners(); return data.result;
+        if (data.snapshot) setCloudSnapshot(data.snapshot);
+        else if (data.drafts && getCloudSnapshot()) setCloudSnapshot({ ...getCloudSnapshot()!, drafts: data.drafts });
+        connectionError = ''; notifyListeners(); return data.result;
       } catch (e) {
         if (version === generation) {
           connectionError = e instanceof CloudResponseError && e.status < 500 && e.status !== 401 ? '' : e instanceof Error ? e.message : 'Mất kết nối Supabase.';

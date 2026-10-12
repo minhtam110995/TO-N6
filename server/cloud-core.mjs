@@ -76,7 +76,7 @@ function asUser(row, profiles) {
     parentId: parent?.id, parentName: parent?.full_name };
 }
 
-export function createCloudApi(config) {
+export function createCloudApi(config, makeClient = createClient) {
   const url = config.SUPABASE_URL || config.VITE_SUPABASE_URL;
   const secret = config.SUPABASE_SECRET_KEY;
   const publicKey = config.SUPABASE_PUBLISHABLE_KEY || config.VITE_SUPABASE_ANON_KEY;
@@ -84,7 +84,7 @@ export function createCloudApi(config) {
   const rates = new Map();
   const database = () => {
     requireValue(url && secret && publicKey, 'Máy chủ chưa có cấu hình Supabase.', 503);
-    admin ||= createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    admin ||= makeClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
     return admin;
   };
   const teacherOnly = actor => requireValue(actor.role === 'teacher', 'Chỉ giáo viên được thực hiện thao tác này.', 403);
@@ -96,8 +96,10 @@ export function createCloudApi(config) {
     requireValue(!error && data.user, 'Phiên đăng nhập hết hạn.', 401);
     const profile = await checked(db.from('toan6_profiles').select('*').eq('auth_user_id', data.user.id).maybeSingle());
     requireValue(profile?.status === 'active', 'Tài khoản chưa được liên kết hoặc đã khóa.', 403);
-    const school = await checked(db.from('toan6_classes').select('id,teacher_auth_id').eq('id',profile.class_id).single());
-    if (profile.role === 'teacher') requireValue(school.teacher_auth_id === profile.auth_user_id, 'Quyền giáo viên không hợp lệ.', 403);
+    if (profile.role === 'teacher') {
+      const school = await checked(db.from('toan6_classes').select('id,teacher_auth_id').eq('id',profile.class_id).single());
+      requireValue(school.teacher_auth_id === profile.auth_user_id, 'Quyền giáo viên không hợp lệ.', 403);
+    }
     if (profile.role === 'parent') {
       const child = await checked(scoped(db,'toan6_profiles',profile).eq('id',profile.linked_student_id).eq('role','student').maybeSingle());
       requireValue(child, 'Tài khoản chưa liên kết đúng học sinh.', 403);
@@ -114,31 +116,34 @@ export function createCloudApi(config) {
   const snapshot = async (actor, includeBank = true) => {
     const db = database(), teacher = actor.role === 'teacher';
     const studentId = actor.role === 'parent' ? actor.linked_student_id : actor.id;
-    const profiles = await all(() => {
+    const [profiles, examRows, subRows, wrongRows, messages, reminders, drafts, attempts, bankRows] = await Promise.all([
+      all(() => {
       const q = scoped(db,'toan6_profiles',actor);
       return teacher ? q : actor.role === 'parent' ? q.in('id',[actor.id,studentId]) : q.eq('id',actor.id);
-    });
+      }),
+      all(() => scoped(db,'toan6_exams',actor)),
+      all(() => teacher ? scoped(db,'toan6_submissions',actor) : scoped(db,'toan6_submissions',actor).eq('student_id',studentId)),
+      all(() => teacher ? scoped(db,'toan6_wrong_questions',actor) : scoped(db,'toan6_wrong_questions',actor).eq('student_id',studentId)),
+      actor.role === 'student' ? [] : all(()=>teacher ? scoped(db,'toan6_messages',actor).order('created_at') : scoped(db,'toan6_messages',actor).eq('parent_id',actor.id).order('created_at')),
+      actor.role !== 'student' ? [] : all(()=>scoped(db,'toan6_reminders',actor).eq('student_id',actor.id)),
+      all(()=>scoped(db,'toan6_drafts',actor).eq('owner_id',actor.id)),
+      actor.role !== 'student' ? [] : all(()=>scoped(db,'toan6_attempts',actor).eq('student_id',actor.id).is('submission_id',null)),
+      includeBank ? all(()=>scoped(db,'toan6_questions',actor).order('id')) : [],
+    ]);
     const users = profiles.map(p => asUser(p,profiles));
-    const examRows = await all(() => scoped(db,'toan6_exams',actor));
-    const subRows = await all(() => teacher ? scoped(db,'toan6_submissions',actor) : scoped(db,'toan6_submissions',actor).eq('student_id',studentId));
     const submissions = subRows.map(r=>r.payload).sort((a,b)=>Date.parse(b.submittedAt)-Date.parse(a.submittedAt));
     const exams = examRows.map(r=>r.payload).filter(e=>teacher || assignedTo(e,studentId)).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).map(e=>
       teacher || canReview(e,studentId,submissions) ? e : {...e,questions:e.questions.map(stripAnswers)});
-    const wrongRows = await all(() => teacher ? scoped(db,'toan6_wrong_questions',actor) : scoped(db,'toan6_wrong_questions',actor).eq('student_id',studentId));
     const wrong = wrongRows.map(r=>r.payload).map(w=>{
       const source = examRows.find(r=>r.id===w.sourceExamId)?.payload;
       return teacher || source && canReview(source,studentId,submissions) ? w : {...w,question:stripAnswers(w.question),correctAnswer:'',teacherNote:''};
     });
-    const messages = actor.role === 'student' ? [] : await all(()=>teacher ? scoped(db,'toan6_messages',actor).order('created_at') : scoped(db,'toan6_messages',actor).eq('parent_id',actor.id).order('created_at'));
-    const reminders = actor.role !== 'student' ? [] : await all(()=>scoped(db,'toan6_reminders',actor).eq('student_id',actor.id));
-    const drafts = await all(()=>scoped(db,'toan6_drafts',actor).eq('owner_id',actor.id));
-    const attempts = actor.role !== 'student' ? [] : await all(()=>scoped(db,'toan6_attempts',actor).eq('student_id',actor.id).is('submission_id',null));
     const result = {user:asUser(actor,profiles),students:users.filter(u=>u.role==='student'),parents:users.filter(u=>u.role==='parent'),
       exams,submissions,wrong,weakTopics:[],drafts:Object.fromEntries(drafts.map(d=>[d.id,d.payload])),attempts,
       messages:messages.map(m=>({id:m.id,parentId:m.parent_id,senderId:m.sender_id,body:m.body,createdAt:m.created_at,readAt:m.read_at||undefined})),
       reminders:reminders.map(r=>r.payload)};
     if (includeBank) {
-      const bank = (await all(()=>scoped(db,'toan6_questions',actor).order('id'))).map(r=>r.payload);
+      const bank = bankRows.map(r=>r.payload);
       result.bank = teacher ? bank : bank.map(stripAnswers);
     }
     return result;
@@ -209,6 +214,7 @@ export function createCloudApi(config) {
       requireValue(e && typeof e.id==='string' && e.id.length<160 && typeof e.title==='string' && e.title.trim().length>0 && e.title.length<=200,'Tên đề không hợp lệ.');
       const practice=e.type==='practice';
       requireValue(practice?actor.role==='student':actor.role==='teacher','Không có quyền tạo bài.',403);
+      requireValue(body.startImmediately !== true || practice, 'Chỉ mở ngay bài ôn luyện của học sinh.', 403);
       requireValue(Array.isArray(e.questions)&&e.questions.length>0&&e.questions.length<=100&&new Set(e.questions.map(q=>q.id)).size===e.questions.length,'Đề phải có 1 đến 100 câu khác nhau.');
       const rows=await checked(scoped(db,'toan6_questions',actor).in('id',e.questions.map(q=>q.id)));
       requireValue(rows.length===e.questions.length,'Một câu hỏi không có trong ngân hàng.');
@@ -226,6 +232,10 @@ export function createCloudApi(config) {
       requireValue(!existing || existing.class_id===actor.class_id && existing.created_by===actor.id,'Mã đề đã tồn tại.',409);
       await checked(db.from('toan6_exams').upsert({id:e.id,class_id:actor.class_id,created_by:actor.id,payload},{onConflict:'id',ignoreDuplicates:true}));
       result={id:e.id};
+      if (body.startImmediately === true) {
+        requireValue(practice && actor.role === 'student', 'Chỉ mở ngay bài ôn luyện của học sinh.', 403);
+        result.attempt = await checked(db.rpc('toan6_begin_attempt',{p_student:actor.id,p_exam:e.id}));
+      }
     } else if(op==='startExam'){
       requireValue(actor.role==='student','Chỉ học sinh được làm bài.',403);
       await examFor(actor,body.examId);
@@ -319,6 +329,10 @@ export function createCloudApi(config) {
       const currentSession = (await authClient.auth.getSession()).data.session;
       result={session:{access_token:currentSession.access_token,refresh_token:currentSession.refresh_token}};
     } else throw new CloudError('Thao tác không được hỗ trợ.',404);
+    if (op === 'saveDraft' || op === 'deleteDraft') {
+      const drafts = await all(()=>scoped(db,'toan6_drafts',actor).eq('owner_id',actor.id));
+      return {result,drafts:Object.fromEntries(drafts.map(d=>[d.id,d.payload]))};
+    }
     return {result,snapshot:await snapshot(actor,includeBank)};
   }
   return {dispatch,snapshot,authenticate};

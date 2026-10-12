@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, BookOpen, Users, LayoutDashboard, ClipboardList, BarChart3, Settings, LogOut, KeyRound, Trash2, Download } from 'lucide-react';
 import { getCurrentUser, getParents, getStudents, resetAllDataToDefault, subscribeToStore, getExams, getSubmissions, getWrongQuestions, getQuestionBank, createExam } from './services/storage';
 import { createClassBackup, downloadClassBackup } from './services/classBackup';
@@ -57,6 +57,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const [activeExam, setActiveExam] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const opening = useRef(false);
+  const [openingExam, setOpeningExam] = useState(false);
   const [selectedExam, setSelectedExam] = useState<string | undefined>();
   const [assignedId, setAssignedId] = useState<string>();
   const [selectedParent, setSelectedParent] = useState<string>();
@@ -95,9 +97,12 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     setTab(aliases[next] || next); setMenu(false); setResult(null); setSelectedStudent(undefined); setSelectedExam(undefined); window.scrollTo({ top: 0 });
   };
   const startExam = async (id: string) => {
+    if (opening.current) return;
     if (CLOUD_ENABLED) {
+      opening.current = true; setOpeningExam(true);
       try { await cloudRequest('startExam', { examId: id }); setActiveExam(id); setResult(null); }
       catch (e) { setNotice(e instanceof Error ? e.message : 'Chưa bắt đầu được bài làm.'); }
+      finally { opening.current = false; setOpeningExam(false); }
       return;
     }
     const exam = getExams().find(e => e.id === id);
@@ -109,10 +114,19 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     setActiveExam(id); setResult(null);
   };
   const practice = async (questions: Question[]) => {
+    if (opening.current) return;
     if (!questions.length) return setNotice('Chưa có câu hỏi trong bài đã chọn.');
+    questions = [...new Map(questions.map(q => [q.id, q])).values()].slice(0, 100);
     const exam: Exam = { id: `practice-${crypto.randomUUID()}`, title: `Ôn luyện: ${questions[0].lessonTitle}`, type: 'practice', chapterId: questions[0].chapterId, lessonIds: [...new Set(questions.map(q => q.lessonId))], matrix: { nhanBietPercent: 40, thongHieuPercent: 30, vanDungPercent: 20, vanDungCaoPercent: 10 }, timeLimitMinutes: Math.max(5, Math.ceil(questions.reduce((s, q) => s + q.estimatedSeconds, 0) / 60)), deadline: new Date(Date.now() + 86400000).toISOString(), maxRetries: 999, shuffleQuestions: true, shuffleOptions: true, showSolutionAfter: 'submit', assignedTo: [user.id], createdBy: user.id, createdAt: new Date().toISOString(), questions, status: 'active' };
-    try { await createExam(exam); if (CLOUD_ENABLED) await startExam(exam.id); else { localStorage.setItem(`active_exam_${user.id}`, exam.id); setActiveExam(exam.id); } }
+    exam.timeLimitMinutes = Math.max(5, Math.min(180, Math.ceil(questions.reduce((sum, q) => sum + (Number.isFinite(q.estimatedSeconds) && q.estimatedSeconds > 0 ? q.estimatedSeconds : 60), 0) / 60)));
+    opening.current = true; setOpeningExam(true);
+    try {
+      if (CLOUD_ENABLED) await cloudRequest('createExam', { exam, startImmediately: true });
+      else { await createExam(exam); localStorage.setItem(`active_exam_${user.id}`, exam.id); }
+      setActiveExam(exam.id); setResult(null);
+    }
     catch (e) { setNotice(e instanceof Error ? e.message : 'Chưa tạo được bài ôn luyện.'); }
+    finally { opening.current = false; setOpeningExam(false); }
   };
   const teacherNav = [['overview', 'Tổng quan', LayoutDashboard], ['students', 'Học sinh', Users], ['questions', 'Ngân hàng câu hỏi', BookOpen], ['create_exam', 'Tạo đề & giao bài', ClipboardList], ['analytics', 'Kết quả', BarChart3], ['settings', 'Cài đặt', Settings]] as const;
   const learnerNav = user.role === 'parent' ? [['overview', 'Tổng quan', LayoutDashboard], ['progress', 'Tiến độ', BarChart3], ['history', 'Sổ bài làm', ClipboardList], ['contact', 'Liên hệ', Users]] as const : [['overview', 'Trang chủ', LayoutDashboard], ['practice', 'Tự ôn luyện', BookOpen], ['exam', 'Làm bài', ClipboardList], ['wrong', 'Sổ câu sai', BookOpen], ['history', 'Tiến độ', BarChart3]] as const;
@@ -142,7 +156,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
           const draft = CLOUD_ENABLED ? getCloudSnapshot()?.attempts.some(a => a.exam_id === exam.id && Date.parse(a.ends_at) + 300000 > Date.now()) : !!localStorage.getItem(`draft_exam_${user.id}_${exam.id}`);
           return <article className="exam-item" key={exam.id}><div><span className={`status ${expired ? 'closed' : ''}`}>{expired ? 'Đã hết hạn' : 'Đang giao'}</span><h2>{exam.title}</h2><p>{exam.questions.length} câu · {exam.timeLimitMinutes} phút</p><p>Hạn nộp: {new Date(exam.deadline).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</p>{attempts.length > 0 && <p>Đã nộp {attempts.length} lượt · Điểm gần nhất: {attempts[0].score}/10</p>}</div><div className="item-actions">{user.role === 'student' && <button className="primary-button" disabled={!draft && (expired || attempts.length >= exam.maxRetries)} onClick={() => startExam(exam.id)}>{draft ? 'Tiếp tục' : expired ? 'Đã hết hạn' : attempts.length >= exam.maxRetries ? 'Đã hết lượt' : attempts.length ? 'Làm lại' : 'Làm bài'}</button>}{attempts[0] && <button className="secondary-button" onClick={() => setResult(attempts[0].id)}>Xem kết quả</button>}</div></article>;
         })}{!exams.length && <p className="empty-state">Chưa có bài tập được giao.</p>}</div></>}
-        {tab === 'practice' && <SelfPractice onStartCustomPractice={(chapter, lesson) => practice(getQuestionBank().filter(q => q.chapterId === chapter && (!lesson || q.lessonId === lesson)).slice(0, 10))} />}
+        {tab === 'practice' && <SelfPractice busy={openingExam} onStartCustomPractice={(chapter, lesson) => practice(getQuestionBank().filter(q => q.chapterId === chapter && (!lesson || q.lessonId === lesson)).slice(0, 10))} />}
         {tab === 'wrong' && <WrongQuestionBook onPracticeAgain={qid => practice(getWrongQuestions(user.id).filter(w => qid ? w.questionId === qid : !w.isResolved).map(w => w.question))} />}
         {tab === 'history' && <section><h1>Kết quả học tập</h1><div className="exam-list">{submissions.map(s => <article className="exam-item" key={s.id}><div><h2>{s.examTitle}</h2><p>{new Date(s.submittedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} · {s.correctCount}/{s.totalQuestions} câu đúng</p></div><div className="item-actions"><strong>{s.score}/10</strong><button className="secondary-button" onClick={() => setResult(s.id)}>Chi tiết</button></div></article>)}{!submissions.length && <p className="empty-state">Chưa có bài làm.</p>}</div></section>}
         {tab === 'contact' && <MessageCenter />}
@@ -150,6 +164,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     </React.Suspense>{!activeExam && <footer className="account-footer"><button className="secondary-button" onClick={() => navigate('password')}><KeyRound size={16} />Đổi mật khẩu</button><button className="secondary-button" onClick={onLogout}><LogOut size={16} />Đăng xuất</button></footer>}</main>
     {!activeExam && user.role !== 'teacher' && <div className="original-bottom-nav"><BottomNav role={user.role} activeTab={user.role === 'parent' ? ({ overview: 'parent_overview', progress: 'parent_progress', history: 'parent_history', contact: 'parent_contact' }[tab] || tab) : ({ overview: 'home', practice: 'self_practice', exam: 'exam', wrong: 'wrong_book', history: 'progress' }[tab] || tab)} onSelectTab={navigate} unresolvedWrongCount={getWrongQuestions(studentId).filter(q => !q.isResolved).length} /></div>}
     {messageNotice ? <div className="app-notice" role="status"><div className="min-w-0"><strong>Tin nhắn mới từ {messageNotice.name}</strong><p>{messageNotice.count} tin nhắn chưa đọc</p></div><button className="secondary-button" onClick={() => { setSelectedParent(messageNotice.parentId); navigate('contact'); setMessageNotice(undefined); }}>Xem tin nhắn</button><button className="icon-button" aria-label="Đóng thông báo tin nhắn" onClick={() => setMessageNotice(undefined)}><X size={18} /></button></div> : notice && <div className="app-notice" role="status">{notice}<button className="icon-button" aria-label="Đóng thông báo" onClick={() => setNotice('')}><X size={18} /></button></div>}
+    {openingExam && tab !== 'practice' && <div className="app-notice" role="status">Đang mở bài...</div>}
     <CreateAccountModal isOpen={account} onClose={() => setAccount(false)} onSuccess={() => { setAccount(false); setNotice('Đã tạo tài khoản và liên kết phụ huynh.'); }} />
     {resetConfirm && <div className="modal-backdrop"><section className="modal-panel space-y-4" role="alertdialog" aria-modal="true" aria-labelledby="reset-title"><h2 id="reset-title">Xóa dữ liệu lớp thử nghiệm?</h2><p>Tài khoản học sinh/phụ huynh, bài giao, bài làm, tin nhắn và bản nháp sẽ bị xóa vĩnh viễn. Giữ ngân hàng câu hỏi và tài khoản giáo viên.</p><div className="result-actions"><button className="secondary-button" onClick={() => setResetConfirm(false)}>Hủy</button><button className="primary-button" onClick={() => { try { resetAllDataToDefault(); setAssignedId(undefined); setSelectedParent(undefined); setMessageNotice(undefined); setResetConfirm(false); setNotice('Đã dọn dữ liệu lớp. Giữ nguyên ngân hàng câu hỏi và tài khoản giáo viên.'); } catch { setNotice('Chưa dọn xong dữ liệu. Hãy kiểm tra và thử lại.'); } }}><Trash2 size={17} />Xác nhận xóa dữ liệu thử</button></div></section></div>}
     <SetupGuideModal isOpen={guide} onClose={() => setGuide(false)} />

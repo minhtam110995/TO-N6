@@ -2,6 +2,28 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const core = import('../server/cloud-core.mjs');
 
+test('snapshot loads independent tables concurrently while preserving learner answer privacy', async () => {
+  const { createCloudApi } = await core;
+  let active = 0, peak = 0;
+  const actor = { id: 'student', role: 'student', class_id: 'class', full_name: 'Test', status: 'active' };
+  const question = { id: 'q', correctAnswers: ['secret'], solutionSteps: ['secret'] };
+  const fake = { from(table) {
+    const query = { select() { return this; }, eq() { return this; }, order() { return this; }, is() { return this; },
+      async range() {
+        active++; peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 10)); active--;
+        return { data: table === 'toan6_profiles' ? [actor] : table === 'toan6_questions' ? [{ payload: question }] : [], error: null };
+      } };
+    return query;
+  } };
+  const api = createCloudApi({ SUPABASE_URL: 'https://test.invalid', SUPABASE_SECRET_KEY: 'server', SUPABASE_PUBLISHABLE_KEY: 'public' }, () => fake);
+  const snapshot = await api.snapshot(actor);
+  assert.ok(peak >= 5, 'table reads should overlap instead of serializing network latency');
+  assert.equal(snapshot.user.id, actor.id);
+  assert.equal(snapshot.bank.length, 1);
+  assert.equal(JSON.stringify(snapshot.bank).includes('secret'), false);
+});
+
 test('API rejects bad methods, cross-origin requests and invalid JSON without exposing secrets', async () => {
   const { createCloudHandler } = await core;
   const handler = createCloudHandler({ SUPABASE_SECRET_KEY: 'never-expose' });
