@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import katex from 'katex';
+import 'katex/dist/katex.min.css';
 import { splitMathText } from '../../services/mathText';
 
 export const MathText: React.FC<{ text: string }> = ({ text }) => <>{splitMathText(text).map((part, i) => typeof part === 'string' ? part : <MathRenderer key={i} fraction={part} />)}</>;

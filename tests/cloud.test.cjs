@@ -2,6 +2,30 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const core = import('../server/cloud-core.mjs');
 
+test('PWA prefers fresh HTML, bypasses API caches and removes only its own stale caches', async () => {
+  const fs = require('node:fs');
+  const vm = require('node:vm');
+  const handlers = {}, deleted = [], saved = [], pending = [];
+  const self = { location: { origin: 'https://app.invalid' }, addEventListener: (name, fn) => handlers[name] = fn,
+    skipWaiting() {}, clients: { claim() {} } };
+  const caches = { keys: async () => ['toan6-kntt-v1', 'unrelated'], delete: async key => deleted.push(key),
+    open: async () => ({ put: async (key, value) => saved.push([key, await value.text()]) }),
+    match: async () => new Response('old') };
+  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../public/sw.js'), 'utf8'), {
+    self, caches, URL, fetch: async () => new Response('new'),
+  });
+  let response;
+  handlers.fetch({ request: { method: 'GET', url: 'https://app.invalid/', mode: 'navigate' },
+    respondWith: promise => response = promise, waitUntil: promise => pending.push(promise) });
+  assert.equal(await (await response).text(), 'new');
+  await Promise.all(pending);
+  assert.deepEqual(saved, [['/index.html', 'new']]);
+  handlers.fetch({ request: { method: 'GET', url: 'https://app.invalid/api/cloud' }, respondWith() { assert.fail('API must not be cached'); } });
+  handlers.activate({ waitUntil: promise => pending.push(promise) });
+  await Promise.all(pending);
+  assert.deepEqual(deleted, ['toan6-kntt-v1']);
+});
+
 test('snapshot loads independent tables concurrently while preserving learner answer privacy', async () => {
   const { createCloudApi } = await core;
   let active = 0, peak = 0;
